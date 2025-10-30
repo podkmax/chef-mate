@@ -1,0 +1,128 @@
+databaseChangeLog:
+  - changeSet:
+      id: 20251030-01-create-base-product
+      author: codex
+      changes:
+        - sql:
+            sql: "CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";"
+        - createTable:
+            tableName: base_product
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: name
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: unit
+                  type: varchar(10)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: is_freezable
+                  type: boolean
+                  defaultValueBoolean: true
+                  constraints:
+                    nullable: false
+        - addUniqueConstraint:
+            tableName: base_product
+            columnNames: name
+            constraintName: uq_base_product_name
+        - sql:
+            sql: "ALTER TABLE base_product ADD CONSTRAINT ck_base_product_unit CHECK (unit IN ('g','pcs'));"
+  - changeSet:
+      id: 20251030-02-update-ingredient-base-product
+      author: codex
+      changes:
+        - addColumn:
+            tableName: dish_ingredient
+            columns:
+              - column:
+                  name: base_product_id
+                  type: UUID
+        - sql:
+            sql: |
+              INSERT INTO base_product (id, name, unit, is_freezable)
+              SELECT gen_random_uuid(), src.display_name,
+                     src.unit,
+                     true
+              FROM (
+                  SELECT DISTINCT ON (lower(trim(di.name)))
+                         trim(di.name) AS display_name,
+                         CASE WHEN lower(COALESCE(di.unit, '')) = 'pcs' THEN 'pcs' ELSE 'g' END AS unit
+                  FROM dish_ingredient di
+                  WHERE di.name IS NOT NULL AND trim(di.name) <> ''
+                  ORDER BY lower(trim(di.name)), trim(di.name)
+              ) src
+              WHERE NOT EXISTS (
+                  SELECT 1 FROM base_product bp WHERE lower(bp.name) = lower(src.display_name)
+              );
+        - sql:
+            sql: |
+              UPDATE dish_ingredient di
+              SET base_product_id = bp.id
+              FROM base_product bp
+              WHERE di.name IS NOT NULL AND lower(bp.name) = lower(di.name);
+        - addNotNullConstraint:
+            tableName: dish_ingredient
+            columnName: base_product_id
+            constraintName: nn_dish_ingredient_base_product
+        - addForeignKeyConstraint:
+            baseTableName: dish_ingredient
+            baseColumnNames: base_product_id
+            referencedTableName: base_product
+            referencedColumnNames: id
+            constraintName: fk_dish_ingredient_base_product
+  - changeSet:
+      id: 20251030-03-create-client-stock
+      author: codex
+      changes:
+        - createTable:
+            tableName: client_stock
+            columns:
+              - column:
+                  name: id
+                  type: UUID
+                  constraints:
+                    primaryKey: true
+                    nullable: false
+              - column:
+                  name: user_id
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: base_product_id
+                  type: UUID
+                  constraints:
+                    nullable: false
+              - column:
+                  name: qty
+                  type: decimal(12,3)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: unit
+                  type: varchar(10)
+                  constraints:
+                    nullable: false
+        - addForeignKeyConstraint:
+            baseTableName: client_stock
+            baseColumnNames: user_id
+            referencedTableName: user_account
+            referencedColumnNames: id
+            constraintName: fk_client_stock_user
+        - addForeignKeyConstraint:
+            baseTableName: client_stock
+            baseColumnNames: base_product_id
+            referencedTableName: base_product
+            referencedColumnNames: id
+            constraintName: fk_client_stock_base_product
+        - sql:
+            sql: "ALTER TABLE client_stock ADD CONSTRAINT ck_client_stock_unit CHECK (unit IN ('g','pcs'));"

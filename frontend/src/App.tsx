@@ -1,22 +1,56 @@
-import { useEffect, useState } from 'react'
+import { CssBaseline } from "@mui/material";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
+import { AuthProvider } from "./auth/AuthContext";
+import { AppLayout } from "./components/AppLayout";
+import { RequireCook } from "./components/RequireCook";
+import { LoginPage } from "./pages/LoginPage";
+import { MenuPage } from "./pages/MenuPage";
+import { OrdersPage } from "./pages/OrdersPage";
+import { ClientStocksPage } from "./pages/ClientStocksPage";
 
-export function App() {
-  const [health, setHealth] = useState<string>('...')
-
-  useEffect(() => {
-    fetch('/api/health')
-      .then(r => r.json())
-      .then(j => setHealth(j.status ?? 'unknown'))
-      .catch(() => setHealth('unreachable'))
-  }, [])
-
+function ProtectedView({ children }: { children: JSX.Element }) {
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', padding: 24 }}>
-      <h1>ChefMate Admin</h1>
-      <p>Placeholder UI.</p>
-      <p>Backend health: <strong>{health}</strong></p>
-    </div>
-  )
+    <RequireCook>
+      <AppLayout>{children}</AppLayout>
+    </RequireCook>
+  );
 }
 
-
+export function App() {
+  return (
+    <AuthProvider>
+      <CssBaseline />
+      <BrowserRouter>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/menu"
+            element={
+              <ProtectedView>
+                <MenuPage />
+              </ProtectedView>
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <ProtectedView>
+                <OrdersPage />
+              </ProtectedView>
+            }
+          />
+          <Route
+            path="/clients"
+            element={
+              <ProtectedView>
+                <ClientStocksPage />
+              </ProtectedView>
+            }
+          />
+          <Route path="/" element={<Navigate to="/menu" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </BrowserRouter>
+    </AuthProvider>
+  );
+}

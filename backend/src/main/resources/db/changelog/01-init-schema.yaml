@@ -1,0 +1,84 @@
+databaseChangeLog:
+  - changeSet:
+      id: 1
+      author: chefmate
+      changes:
+        - createTable:
+            tableName: user_account
+            columns:
+              - column: { name: id, type: BIGSERIAL, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: telegram_id, type: BIGINT }
+              - column: { name: name, type: VARCHAR(255) }
+              - column: { name: role, type: VARCHAR(20) }
+              - column: { name: created_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP }
+
+        - createTable:
+            tableName: dish
+            columns:
+              - column: { name: id, type: BIGSERIAL, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: category, type: VARCHAR(100), constraints: { nullable: false } }
+              - column: { name: title, type: VARCHAR(255), constraints: { nullable: false } }
+              - column: { name: description, type: VARCHAR(1000) }
+              - column: { name: portion_size, type: NUMERIC }
+              - column: { name: active, type: BOOLEAN, defaultValueBoolean: true }
+              - column: { name: created_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP }
+              - column: { name: updated_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP }
+
+        - createTable:
+            tableName: dish_ingredient
+            columns:
+              - column: { name: id, type: BIGSERIAL, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: dish_id, type: BIGINT, constraints: { nullable: false } }
+              - column: { name: name, type: VARCHAR(255), constraints: { nullable: false } }
+              - column: { name: qty, type: NUMERIC, constraints: { nullable: false } }
+              - column: { name: unit, type: VARCHAR(10), constraints: { nullable: false } }
+              - column: { name: exclude_for_client, type: BOOLEAN, defaultValueBoolean: false }
+
+        - createTable:
+            tableName: orders
+            columns:
+              - column: { name: id, type: BIGSERIAL, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: user_id, type: BIGINT, constraints: { nullable: false } }
+              - column: { name: target_date, type: DATE, constraints: { nullable: false } }
+              - column: { name: status, type: VARCHAR(32), constraints: { nullable: false } }
+              - column: { name: created_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP }
+              - column: { name: updated_at, type: TIMESTAMP WITH TIME ZONE, defaultValueComputed: CURRENT_TIMESTAMP }
+              - column: { name: comment, type: VARCHAR(1000) }
+
+        - createTable:
+            tableName: order_item
+            columns:
+              - column: { name: id, type: BIGSERIAL, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: order_id, type: BIGINT, constraints: { nullable: false } }
+              - column: { name: dish_id, type: BIGINT, constraints: { nullable: false } }
+              - column: { name: portions, type: INTEGER, constraints: { nullable: false } }
+              - column: { name: notes, type: VARCHAR(1000) }
+
+        - createTable:
+            tableName: order_ingredient_aggregate
+            columns:
+              - column: { name: id, type: BIGSERIAL, autoIncrement: true, constraints: { primaryKey: true } }
+              - column: { name: order_id, type: BIGINT, constraints: { nullable: false } }
+              - column: { name: name, type: VARCHAR(255), constraints: { nullable: false } }
+              - column: { name: total_qty, type: NUMERIC, constraints: { nullable: false } }
+              - column: { name: unit, type: VARCHAR(10), constraints: { nullable: false } }
+
+        # Индексы
+        - addUniqueConstraint:
+            tableName: dish
+            columnNames: category,title
+            constraintName: ux_dish_category_title
+
+        - createIndex:
+            tableName: orders
+            indexName: ix_orders_userid_targetdate
+            columns:
+              - column: { name: user_id }
+              - column: { name: target_date }
+
+        - addUniqueConstraint:
+            tableName: dish_ingredient
+            columnNames: dish_id,name,unit
+            constraintName: ux_dishingr_dishid_name_unit
+
+

@@ -1,0 +1,6 @@
+databaseChangeLog:
+  - include:
+      file: db/changelog/01-init-schema.yaml
+  - include:
+      file: db/changelog/02-base-product-stock.yaml
+
