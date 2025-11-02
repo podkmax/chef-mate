@@ -9,5 +9,6 @@ RUN npm run build
 # ===== run =====
 FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
 # базовый nginx.conf не обязателен, дефолт подходит
 EXPOSE 80
