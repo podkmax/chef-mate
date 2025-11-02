@@ -82,13 +82,15 @@ public class MenuImportService {
                 if (qty == null) {
                     qty = BigDecimal.ZERO;
                 }
-                String unit = getString(row.getCell(4));
+                String originalUnit = normalizeDisplayUnit(getString(row.getCell(4)));
+                String baseProductUnit = sanitizeUnitForBaseProduct(originalUnit);
                 Boolean exclude = parseBoolean(row.getCell(5));
-                BaseProduct baseProduct = resolveBaseProduct(ingredientName.trim(), unit);
+                BaseProduct baseProduct = resolveBaseProduct(ingredientName.trim(), baseProductUnit);
                 importedDish.ingredients.add(new ImportedIngredient(
                         ingredientName.trim(),
                         qty,
-                        baseProduct.unit,
+                        baseProductUnit,
+                        originalUnit,
                         Boolean.TRUE.equals(exclude),
                         baseProduct
                 ));
@@ -154,7 +156,7 @@ public class MenuImportService {
             di.dish = dish;
             di.name = imported.name;
             di.qty = imported.qty;
-            di.unit = imported.unit;
+            di.unit = imported.displayUnit;
             di.baseProduct = imported.baseProduct;
             di.excludeForClient = imported.excludeForClient;
             dish.ingredients.add(di);
@@ -224,15 +226,26 @@ public class MenuImportService {
         return baseProductRepository.findByNameIgnoreCase(name).orElseGet(() -> {
             BaseProduct bp = new BaseProduct();
             bp.name = name;
-            bp.unit = sanitizeUnit(unit);
+            bp.unit = unit;
             bp.isFreezable = Boolean.TRUE;
             return baseProductRepository.save(bp);
         });
     }
 
-    private String sanitizeUnit(String unit) {
+    private String sanitizeUnitForBaseProduct(String unit) {
         String normalized = unit != null ? unit.trim().toLowerCase(Locale.ROOT) : "";
-        return "pcs".equals(normalized) ? "pcs" : "g";
+        return switch (normalized) {
+            case "pcs", "шт", "шт.", "pieces", "piece" -> "pcs";
+            case "g", "гр", "г", "gram", "grams" -> "g";
+            default -> normalized.isEmpty() ? "g" : normalized;
+        };
+    }
+
+    private String normalizeDisplayUnit(String unit) {
+        if (unit == null) {
+            return "";
+        }
+        return unit.trim();
     }
 
     private static final class ImportedDish {
@@ -245,5 +258,5 @@ public class MenuImportService {
         }
     }
 
-    private record ImportedIngredient(String name, BigDecimal qty, String unit, boolean excludeForClient, BaseProduct baseProduct) { }
+    private record ImportedIngredient(String name, BigDecimal qty, String unit, String displayUnit, boolean excludeForClient, BaseProduct baseProduct) { }
 }

@@ -13,6 +13,7 @@ import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -99,36 +100,68 @@ public class OrderService {
         if (order.items == null) {
             return List.of();
         }
-        Map<UUID, IngredientAggregateDto> aggr = new LinkedHashMap<>();
-        for (OrderItem item : order.items) {
-            Dish dish = dishRepo.findById(item.dishId).orElse(null);
-            if (dish == null || dish.ingredients == null) continue;
-            for (DishIngredient ingr : dish.ingredients) {
-                if (forClient && Boolean.TRUE.equals(ingr.excludeForClient)) continue;
-                BaseProduct baseProduct = ingr.baseProduct != null
-                        ? ingr.baseProduct
-                        : baseProductRepository.findByNameIgnoreCase(ingr.name).orElse(null);
-                if (baseProduct == null) {
-                    continue;
-                }
-                BigDecimal q = ingr.qty.multiply(BigDecimal.valueOf(item.portions != null ? item.portions : 1));
-                aggr.compute(baseProduct.id, (k, v) -> {
-                    if (v == null) {
-                        IngredientAggregateDto d = new IngredientAggregateDto();
-                        d.name = baseProduct.name;
-                        d.unit = baseProduct.unit;
-                        d.totalQty = q;
-                        d.baseProductId = baseProduct.id;
-                        return d;
-                    } else {
-                        v.totalQty = v.totalQty.add(q);
-                        return v;
+        if (forClient) {
+            Map<UUID, IngredientAggregateDto> aggr = new LinkedHashMap<>();
+            for (OrderItem item : order.items) {
+                Dish dish = dishRepo.findById(item.dishId).orElse(null);
+                if (dish == null || dish.ingredients == null) continue;
+                for (DishIngredient ingr : dish.ingredients) {
+                    if (Boolean.TRUE.equals(ingr.excludeForClient)) continue;
+                    BaseProduct baseProduct = ingr.baseProduct != null
+                            ? ingr.baseProduct
+                            : baseProductRepository.findByNameIgnoreCase(ingr.name).orElse(null);
+                    if (baseProduct == null) {
+                        continue;
                     }
-                });
+                    BigDecimal q = ingr.qty.multiply(BigDecimal.valueOf(item.portions != null ? item.portions : 1));
+                    aggr.compute(baseProduct.id, (k, v) -> {
+                        if (v == null) {
+                            IngredientAggregateDto d = new IngredientAggregateDto();
+                            d.name = ingr.name != null && !ingr.name.isBlank() ? ingr.name : baseProduct.name;
+                            d.unit = baseProduct.unit;
+                            d.totalQty = q;
+                            d.baseProductId = baseProduct.id;
+                            return d;
+                        } else {
+                            v.totalQty = v.totalQty.add(q);
+                            return v;
+                        }
+                    });
+                }
             }
+            applyStockAdjustments(order, aggr, true);
+            return new ArrayList<>(aggr.values());
+        } else {
+            Map<String, IngredientAggregateDto> aggr = new LinkedHashMap<>();
+            for (OrderItem item : order.items) {
+                Dish dish = dishRepo.findById(item.dishId).orElse(null);
+                if (dish == null || dish.ingredients == null) continue;
+                for (DishIngredient ingr : dish.ingredients) {
+                    String name = ingr.name != null && !ingr.name.isBlank()
+                            ? ingr.name
+                            : (ingr.baseProduct != null ? ingr.baseProduct.name : "Ингредиент");
+                    String unit = ingr.unit != null && !ingr.unit.isBlank()
+                            ? ingr.unit
+                            : (ingr.baseProduct != null ? ingr.baseProduct.unit : "");
+                    BigDecimal q = ingr.qty.multiply(BigDecimal.valueOf(item.portions != null ? item.portions : 1));
+                    String key = (name + "|" + unit).toLowerCase(Locale.ROOT);
+                    aggr.compute(key, (k, v) -> {
+                        if (v == null) {
+                            IngredientAggregateDto d = new IngredientAggregateDto();
+                            d.name = name;
+                            d.unit = unit;
+                            d.totalQty = q;
+                            d.baseProductId = ingr.baseProduct != null ? ingr.baseProduct.id : null;
+                            return d;
+                        } else {
+                            v.totalQty = v.totalQty.add(q);
+                            return v;
+                        }
+                    });
+                }
+            }
+            return new ArrayList<>(aggr.values());
         }
-        applyStockAdjustments(order, aggr, forClient);
-        return new ArrayList<>(aggr.values());
     }
 
     private void applyStockAdjustments(Order order, Map<UUID, IngredientAggregateDto> aggr, boolean reduceByStock) {

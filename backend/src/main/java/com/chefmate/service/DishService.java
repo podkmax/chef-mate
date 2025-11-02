@@ -89,7 +89,7 @@ public class DishService {
         r.id = e.id;
         r.name = e.name;
         r.qty = e.qty;
-        r.unit = e.baseProduct != null ? e.baseProduct.unit : e.unit;
+        r.unit = e.unit;
         r.excludeForClient = e.excludeForClient;
         r.baseProductId = e.baseProduct != null ? e.baseProduct.id : null;
         return r;
@@ -118,7 +118,7 @@ public class DishService {
         e.excludeForClient = d.excludeForClient != null ? d.excludeForClient : false;
         BaseProduct baseProduct = resolveBaseProduct(d);
         e.baseProduct = baseProduct;
-        e.unit = baseProduct.unit;
+        e.unit = d.unit != null ? d.unit : (baseProduct != null ? baseProduct.unit : null);
         return e;
     }
 
@@ -150,4 +150,3 @@ public class DishService {
         return "pcs".equals(normalized) ? "pcs" : "g";
     }
 }
-
