@@ -1,0 +1,53 @@
+name: Deploy to Production
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build_and_deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      REGISTRY: ghcr.io
+      IMAGE: ghcr.io/${{ github.repository }}
+      SSH_HOST: ${{ secrets.SSH_HOST }}
+      SSH_USER: ${{ secrets.SSH_USER }}
+      REMOTE_DIR: ${{ secrets.REMOTE_DIR }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to GHCR
+        run: |
+          echo "${{ secrets.GHCR_PAT }}" | docker login $REGISTRY -u ${{ github.actor }} --password-stdin
+
+      # BUILD BACKEND
+      - name: Build backend image
+        run: |
+          docker build -t $IMAGE/backend:latest -f backend/Dockerfile backend
+          docker push $IMAGE/backend:latest
+
+      # BUILD FRONTEND
+      - name: Build frontend image
+        run: |
+          docker build -t $IMAGE/frontend:latest -f frontend/Dockerfile frontend
+          docker push $IMAGE/frontend:latest
+
+      # Deploy to VPS via SSH
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H $SSH_HOST >> ~/.ssh/known_hosts
+
+      - name: Deploy on VPS
+        run: |
+          ssh $SSH_USER@$SSH_HOST "
+            cd $REMOTE_DIR && \
+            docker login ghcr.io -u ${{ github.actor }} --password ${{ secrets.GHCR_PAT }} && \
+            docker compose pull && \
+            docker compose up -d --remove-orphans
+          "
