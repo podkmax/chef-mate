@@ -54,7 +54,9 @@ public class ClientNotificationService {
                 }
                 String name = ingr.name != null ? ingr.name : "Ингредиент";
                 String qty = required.stripTrailingZeros().toPlainString();
-                String unit = ingr.unit != null && !ingr.unit.isBlank() ? " " + ingr.unit : "";
+                String unit = ingr.unit != null && ingr.unit.shortName != null && !ingr.unit.shortName.isBlank()
+                        ? " " + ingr.unit.shortName
+                        : "";
                 sb.append("— ").append(name).append(" — ").append(qty).append(unit).append("\n");
             }
         }

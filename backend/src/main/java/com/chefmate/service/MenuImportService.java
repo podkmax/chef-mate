@@ -3,6 +3,7 @@ package com.chefmate.service;
 import com.chefmate.model.BaseProduct;
 import com.chefmate.model.Dish;
 import com.chefmate.model.DishIngredient;
+import com.chefmate.model.Unit;
 import com.chefmate.repo.BaseProductRepository;
 import com.chefmate.repo.DishRepository;
 import java.io.IOException;
@@ -31,11 +32,16 @@ import org.springframework.web.server.ResponseStatusException;
 public class MenuImportService {
     private final DishRepository dishRepository;
     private final BaseProductRepository baseProductRepository;
+    private final UnitService unitService;
     private final DataFormatter formatter = new DataFormatter();
 
-    public MenuImportService(DishRepository dishRepository, BaseProductRepository baseProductRepository) {
+    public MenuImportService(
+            DishRepository dishRepository,
+            BaseProductRepository baseProductRepository,
+            UnitService unitService) {
         this.dishRepository = dishRepository;
         this.baseProductRepository = baseProductRepository;
+        this.unitService = unitService;
     }
 
     public record MenuImportSummary(int created, int updated, int skipped) { }
@@ -82,15 +88,13 @@ public class MenuImportService {
                 if (qty == null) {
                     qty = BigDecimal.ZERO;
                 }
-                String originalUnit = normalizeDisplayUnit(getString(row.getCell(4)));
-                String baseProductUnit = sanitizeUnitForBaseProduct(originalUnit);
+                Unit unit = unitService.resolveUnitOrDefault(getString(row.getCell(4)));
                 Boolean exclude = parseBoolean(row.getCell(5));
-                BaseProduct baseProduct = resolveBaseProduct(ingredientName.trim(), baseProductUnit);
+                BaseProduct baseProduct = resolveBaseProduct(ingredientName.trim(), unit);
                 importedDish.ingredients.add(new ImportedIngredient(
                         ingredientName.trim(),
                         qty,
-                        baseProductUnit,
-                        originalUnit,
+                        unit,
                         Boolean.TRUE.equals(exclude),
                         baseProduct
                 ));
@@ -118,7 +122,6 @@ public class MenuImportService {
                     fresh.title = imported.name;
                     fresh.description = imported.description;
                     fresh.category = "Imported";
-                    fresh.portionSize = null;
                     fresh.active = true;
                     fresh.createdAt = now;
                     fresh.updatedAt = now;
@@ -156,7 +159,7 @@ public class MenuImportService {
             di.dish = dish;
             di.name = imported.name;
             di.qty = imported.qty;
-            di.unit = imported.displayUnit;
+            di.unit = imported.unit;
             di.baseProduct = imported.baseProduct;
             di.excludeForClient = imported.excludeForClient;
             dish.ingredients.add(di);
@@ -222,30 +225,14 @@ public class MenuImportService {
         };
     }
 
-    private BaseProduct resolveBaseProduct(String name, String unit) {
+    private BaseProduct resolveBaseProduct(String name, Unit unit) {
         return baseProductRepository.findByNameIgnoreCase(name).orElseGet(() -> {
             BaseProduct bp = new BaseProduct();
             bp.name = name;
-            bp.unit = unit;
+            bp.unit = unit != null ? unit.shortName : unitService.getDefaultUnit().shortName;
             bp.isFreezable = Boolean.TRUE;
             return baseProductRepository.save(bp);
         });
-    }
-
-    private String sanitizeUnitForBaseProduct(String unit) {
-        String normalized = unit != null ? unit.trim().toLowerCase(Locale.ROOT) : "";
-        return switch (normalized) {
-            case "pcs", "шт", "шт.", "pieces", "piece" -> "pcs";
-            case "g", "гр", "г", "gram", "grams" -> "g";
-            default -> normalized.isEmpty() ? "g" : normalized;
-        };
-    }
-
-    private String normalizeDisplayUnit(String unit) {
-        if (unit == null) {
-            return "";
-        }
-        return unit.trim();
     }
 
     private static final class ImportedDish {
@@ -258,5 +245,5 @@ public class MenuImportService {
         }
     }
 
-    private record ImportedIngredient(String name, BigDecimal qty, String unit, String displayUnit, boolean excludeForClient, BaseProduct baseProduct) { }
+    private record ImportedIngredient(String name, BigDecimal qty, Unit unit, boolean excludeForClient, BaseProduct baseProduct) { }
 }

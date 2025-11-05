@@ -351,7 +351,8 @@ export function OrdersPage() {
             <Stack spacing={1}>
               {ingredientsDialog.ingredients.map((item, idx) => (
                 <Typography key={idx}>
-                  — {item.name} — {item.totalQty} {item.unit ?? ""}
+                  — {item.name} — {item.totalQty}
+                  {item.unit?.shortName ? ` ${item.unit.shortName}` : ""}
                 </Typography>
               ))}
             </Stack>

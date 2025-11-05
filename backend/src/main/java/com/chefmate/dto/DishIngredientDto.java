@@ -10,9 +10,9 @@ public class DishIngredientDto {
     public String name;
     @NotNull
     public BigDecimal qty;
-    @NotBlank
-    public String unit;
+    @NotNull
+    public java.util.UUID unitId;
+    public UnitDto unit;
     public Boolean excludeForClient;
     public java.util.UUID baseProductId;
 }
-

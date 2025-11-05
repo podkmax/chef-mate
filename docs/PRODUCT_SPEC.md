@@ -40,15 +40,15 @@ Columns:
 - `hide_from_client_list` yes/no
 - `notes` string (opt)
 
-Units allowed: `g`, `ml`, `pcs`. Aggregate only same name+unit.
+Units allowed: `г`, `кг`, `мл`, `л`, `шт`, `уп`, `зуб`, `гол`. Aggregate only same name+unit.
 
 Example:
-Свекла|300|g; Капуста|200|g; Соль|5|g
+Свекла|300|г; Капуста|200|г; Соль|5|г
 
 ## Entities (minimum)
 - User(id, telegramId, name, role[CLIENT|COOK|ADMIN], createdAt)
-- Dish(id, category, title, description, portionSize, active, createdAt, updatedAt)
-- DishIngredient(id, dishId, name, qty, unit[g|ml|pcs], excludeForClient[bool])
+- Dish(id, category, title, description, active, createdAt, updatedAt)
+- DishIngredient(id, dishId, name, qty, unitId → unit(id), excludeForClient[bool])
 - Order(id, userId, targetDate, status, createdAt, updatedAt, comment)
 - OrderItem(id, orderId, dishId, portions[int], notes)
 - OrderIngredientAggregate(orderId, name, totalQty, unit)

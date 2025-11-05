@@ -4,7 +4,6 @@ import com.chefmate.dto.BaseProductDto;
 import com.chefmate.model.BaseProduct;
 import com.chefmate.repo.BaseProductRepository;
 import java.util.List;
-import java.util.Locale;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.springframework.http.HttpStatus;
@@ -15,9 +14,11 @@ import org.springframework.web.server.ResponseStatusException;
 @Service
 public class BaseProductService {
     private final BaseProductRepository baseProductRepository;
+    private final UnitService unitService;
 
-    public BaseProductService(BaseProductRepository baseProductRepository) {
+    public BaseProductService(BaseProductRepository baseProductRepository, UnitService unitService) {
         this.baseProductRepository = baseProductRepository;
+        this.unitService = unitService;
     }
 
     @Transactional(readOnly = true)
@@ -29,7 +30,6 @@ public class BaseProductService {
     public BaseProductDto create(BaseProductDto dto) {
         BaseProduct entity = fromDto(dto);
         entity.id = UUID.randomUUID();
-        validateUnit(entity.unit);
         return toDto(baseProductRepository.save(entity));
     }
 
@@ -39,12 +39,11 @@ public class BaseProductService {
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Base product not found"));
         entity.name = dto.name != null ? dto.name.trim() : entity.name;
         if (dto.unit != null) {
-            entity.unit = sanitizeUnit(dto.unit);
+            entity.unit = resolveUnit(dto.unit);
         }
         if (dto.isFreezable != null) {
             entity.isFreezable = dto.isFreezable;
         }
-        validateUnit(entity.unit);
         return toDto(baseProductRepository.save(entity));
     }
 
@@ -73,20 +72,16 @@ public class BaseProductService {
     private BaseProduct fromDto(BaseProductDto dto) {
         BaseProduct entity = new BaseProduct();
         entity.name = dto.name != null ? dto.name.trim() : null;
-        entity.unit = sanitizeUnit(dto.unit);
+        entity.unit = dto.unit != null ? resolveUnit(dto.unit) : unitService.getDefaultUnit().shortName;
         entity.isFreezable = dto.isFreezable != null ? dto.isFreezable : Boolean.TRUE;
-        validateUnit(entity.unit);
         return entity;
     }
 
-    private String sanitizeUnit(String unit) {
-        String normalized = unit != null ? unit.trim().toLowerCase(Locale.ROOT) : "";
-        return "pcs".equals(normalized) ? "pcs" : "g";
-    }
-
-    private void validateUnit(String unit) {
-        if (!"g".equals(unit) && !"pcs".equals(unit)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Unit must be 'g' or 'pcs'");
+    private String resolveUnit(String raw) {
+        String shortName = unitService.normalizeShortName(raw);
+        if (!unitService.isKnownShortName(shortName)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Неизвестная единица измерения: " + raw);
         }
+        return shortName;
     }
 }

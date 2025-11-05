@@ -12,11 +12,9 @@ public class DishDto {
     @NotBlank
     public String title;
     public String description;
-    public Double portionSize;
     public Boolean active;
     @NotEmpty
     @Valid
     public List<DishIngredientDto> ingredients;
 }
-
 

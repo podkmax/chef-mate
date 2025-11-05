@@ -129,6 +129,8 @@ public class BotOrderSessionService {
         if (data.startsWith("dish:")) {
             Long dishId = Long.valueOf(data.substring(5));
             ss.selectedDish = dishId;
+            DishDto dish = dishService.getDish(dishId);
+            ss.selectedDishTitle = dish != null ? dish.title : null;
             askPortions(chatId, dishId, sendReply);
         } else if (data.startsWith("portion:")) {
             int portions = Integer.parseInt(data.substring(8));
@@ -214,10 +216,17 @@ public class BotOrderSessionService {
             return;
         }
         ss.stage = Stage.CONFIRM;
-        String text = "Проверим заказ: блюдо id " + ss.selectedDish
-                + ", порций — " + ss.selectedPortions
-                + ", дата — " + ss.selectedDate.format(DATE_REPLY_FORMAT)
-                + ".\nЕсли всё верно, нажми Подтвердить.";
+        DishDto dish = dishService.getDish(ss.selectedDish);
+        if (ss.selectedDishTitle == null && dish != null) {
+            ss.selectedDishTitle = dish.title;
+        }
+        String dishName = ss.selectedDishTitle != null ? ss.selectedDishTitle : ("Блюдо #" + ss.selectedDish);
+        int portions = ss.selectedPortions != null ? ss.selectedPortions : 0;
+        String date = ss.selectedDate.format(DATE_REPLY_FORMAT);
+        String text = "Проверим заказ:\n"
+                + "🍽 Блюдо: " + dishName + " (x" + portions + ")\n"
+                + "📅 Дата: " + date + "\n\n"
+                + "Если всё верно, нажми Подтвердить.";
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         rows.add(List.of(InlineKeyboardButton.builder().text("✅ Подтвердить").callbackData("confirm").build()));
         rows.add(List.of(backButton("date"), cancelButton()));
@@ -375,5 +384,6 @@ public class BotOrderSessionService {
         boolean awaitingCustomDate;
         boolean saved;
         Stage stage = Stage.MENU;
+        String selectedDishTitle;
     }
 }

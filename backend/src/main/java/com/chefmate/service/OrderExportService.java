@@ -45,7 +45,8 @@ public class OrderExportService {
                 row.createCell(0).setCellValue(item.name != null ? item.name : "");
                 row.createCell(1).setCellValue(
                         item.totalQty != null ? item.totalQty.stripTrailingZeros().toPlainString() : "");
-                row.createCell(2).setCellValue(item.unit != null ? item.unit : "");
+                String unitLabel = item.unit != null && item.unit.shortName != null ? item.unit.shortName : "";
+                row.createCell(2).setCellValue(unitLabel);
             }
             workbook.write(out);
             return out.toByteArray();
@@ -63,17 +64,23 @@ public class OrderExportService {
             List<IngredientAggregateDto> perOrder = orderService.aggregateIngredients(order.id, false);
             for (IngredientAggregateDto ingredient : perOrder) {
                 String name = ingredient.name != null ? ingredient.name : "";
-                String unit = ingredient.unit != null ? ingredient.unit : "";
-                String key = name + "|" + unit;
+                String unitShort = ingredient.unit != null ? ingredient.unit.shortName : "";
+                String unitKey = ingredient.unitId != null ? ingredient.unitId.toString() : unitShort;
+                String key = name + "|" + unitKey;
                 result.compute(key, (k, existing) -> {
                     if (existing == null) {
                         IngredientAggregateDto dto = new IngredientAggregateDto();
                         dto.name = name;
-                        dto.unit = unit;
+                        dto.unitId = ingredient.unitId;
+                        dto.unit = ingredient.unit;
                         dto.totalQty = safeCopy(ingredient.totalQty);
                         return dto;
                     } else {
                         existing.totalQty = safeCopy(existing.totalQty).add(safeCopy(ingredient.totalQty));
+                        existing.unitId = existing.unitId != null ? existing.unitId : ingredient.unitId;
+                        if (existing.unit == null) {
+                            existing.unit = ingredient.unit;
+                        }
                         return existing;
                     }
                 });

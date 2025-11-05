@@ -1,6 +1,8 @@
 package com.chefmate.service;
 
 import com.chefmate.bot.TelegramKeyboards;
+import com.chefmate.dto.CookOrderDishDto;
+import com.chefmate.dto.IngredientAggregateDto;
 import com.chefmate.model.Order;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -24,13 +26,13 @@ public class CookNotificationService {
         this.botToken = botToken;
     }
 
-    public void notifyNewOrder(Order order) {
+    public void notifyNewOrder(Order order, List<CookOrderDishDto> dishes, List<IngredientAggregateDto> ingredients) {
         if (cookChatId <= 0 || order == null) {
             return;
         }
         TelegramClient client = new OkHttpTelegramClient(botToken);
         String datePart = order.targetDate != null ? DATE_FORMAT.format(order.targetDate) : "не указано";
-        String text = "📌 Новый заказ №" + order.id + " на " + datePart;
+        String text = buildMessage(order, datePart, dishes, ingredients);
         InlineKeyboardButton view = InlineKeyboardButton.builder()
                 .text("Посмотреть")
                 .callbackData("cook:view:" + order.id)
@@ -52,5 +54,54 @@ public class CookNotificationService {
 
     public long getCookChatId() {
         return cookChatId;
+    }
+
+    private String buildMessage(Order order, String datePart, List<CookOrderDishDto> dishes, List<IngredientAggregateDto> ingredients) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("📦 Заказ №")
+                .append(order.id != null ? order.id : "?")
+                .append(" на ")
+                .append(datePart)
+                .append("\n");
+        sb.append("Статус: ")
+                .append(order.status != null ? order.status.name() : "CREATED")
+                .append("\n\n");
+        sb.append("🍽 Позиции:\n");
+        if (dishes == null || dishes.isEmpty()) {
+            sb.append("— позиции отсутствуют —\n");
+        } else {
+            for (CookOrderDishDto dish : dishes) {
+                String name = dish.name != null && !dish.name.isBlank()
+                        ? dish.name
+                        : ("Блюдо #" + (dish.dishId != null ? dish.dishId : ""));
+                int portions = dish.portions != null ? dish.portions : 1;
+                sb.append("— ")
+                        .append(name)
+                        .append(" x ")
+                        .append(portions)
+                        .append("\n");
+            }
+        }
+        sb.append("\n🥕 Ингредиенты:\n");
+        if (ingredients == null || ingredients.isEmpty()) {
+            sb.append("— нет данных —");
+        } else {
+            for (IngredientAggregateDto ingr : ingredients) {
+                String name = ingr.name != null && !ingr.name.isBlank() ? ingr.name : "Ингредиент";
+                String qty = ingr.totalQty != null
+                        ? ingr.totalQty.stripTrailingZeros().toPlainString()
+                        : "0";
+                String unit = ingr.unit != null && ingr.unit.shortName != null && !ingr.unit.shortName.isBlank()
+                        ? " " + ingr.unit.shortName
+                        : "";
+                sb.append("— ")
+                        .append(name)
+                        .append(" — ")
+                        .append(qty)
+                        .append(unit)
+                        .append("\n");
+            }
+        }
+        return sb.toString().trim();
     }
 }

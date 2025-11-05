@@ -15,10 +15,11 @@ public class DishIngredient {
     public Dish dish;
     public String name;
     public BigDecimal qty;
-    public String unit;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "unit_id", nullable = false)
+    public Unit unit;
     public Boolean excludeForClient = false;
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "base_product_id", nullable = false)
     public BaseProduct baseProduct;
 }
-

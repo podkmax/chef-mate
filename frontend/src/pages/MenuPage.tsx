@@ -13,9 +13,13 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControl,
   IconButton,
+  InputLabel,
   LinearProgress,
+  MenuItem,
   Paper,
+  Select,
   Snackbar,
   Stack,
   Table,
@@ -29,15 +33,16 @@ import {
   TextField,
   Typography
 } from "@mui/material";
-import { ChangeEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiClient } from "../api/client";
-import { Dish } from "../types";
+import { Dish, Unit } from "../types";
+import { SelectChangeEvent } from "@mui/material/Select";
 
 interface IngredientForm {
   id?: number;
   name: string;
   qty: string;
-  unit: string;
+  unitId: string;
   excludeForClient: boolean;
 }
 
@@ -46,7 +51,6 @@ interface DishFormState {
   category: string;
   title: string;
   description: string;
-  portionSize: string;
   ingredients: IngredientForm[];
 }
 
@@ -54,7 +58,6 @@ const emptyForm: DishFormState = {
   category: "",
   title: "",
   description: "",
-  portionSize: "",
   ingredients: []
 };
 
@@ -78,14 +81,25 @@ export function MenuPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [units, setUnits] = useState<Unit[]>([]);
 
   const isEdit = Boolean(formState.id);
 
-  const showSnackbar = (message: string, severity: AlertColor) => {
+  const showSnackbar = useCallback((message: string, severity: AlertColor) => {
     setSnackbar({ open: true, message, severity });
-  };
+  }, []);
 
-  const loadDishes = async () => {
+  const loadUnits = useCallback(async () => {
+    try {
+      const { data } = await apiClient.get<Unit[]>("/units");
+      setUnits(data);
+    } catch (err) {
+      console.error("Failed to load units", err);
+      showSnackbar("Не удалось загрузить список единиц измерения.", "error");
+    }
+  }, [showSnackbar]);
+
+  const loadDishes = useCallback(async () => {
     try {
       setLoading(true);
       const { data } = await apiClient.get<Dish[]>("/menu");
@@ -97,15 +111,33 @@ export function MenuPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [showSnackbar]);
+
+useEffect(() => {
+  loadUnits();
+  loadDishes();
+}, [loadUnits, loadDishes]);
+
+useEffect(() => {
+  setPage(0);
+}, [searchTerm]);
 
   useEffect(() => {
-    loadDishes();
-  }, []);
-
-  useEffect(() => {
-    setPage(0);
-  }, [searchTerm]);
+    if (!units.length) {
+      return;
+    }
+    setFormState((prev) => {
+      if (!prev.ingredients.some((ing) => !ing.unitId || ing.unitId.length === 0)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        ingredients: prev.ingredients.map((ing) =>
+          ing.unitId && ing.unitId.length > 0 ? ing : { ...ing, unitId: units[0].id }
+        )
+      };
+    });
+  }, [units]);
 
   const filteredDishes = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
@@ -133,7 +165,14 @@ export function MenuPage() {
   const openCreateDialog = () => {
     setFormState({
       ...emptyForm,
-      ingredients: [{ name: "", qty: "", unit: "", excludeForClient: false }]
+      ingredients: [
+        {
+          name: "",
+          qty: "",
+          unitId: units[0]?.id ?? "",
+          excludeForClient: false
+        }
+      ]
     });
     setDialogOpen(true);
   };
@@ -144,12 +183,11 @@ export function MenuPage() {
       category: dish.category ?? "",
       title: dish.title ?? "",
       description: dish.description ?? "",
-      portionSize: dish.portionSize != null ? String(dish.portionSize) : "",
       ingredients: (dish.ingredients ?? []).map((ing) => ({
         id: ing.id,
         name: ing.name ?? "",
         qty: ing.qty != null ? String(ing.qty) : "",
-        unit: ing.unit ?? "",
+        unitId: ing.unitId ?? ing.unit?.id ?? "",
         excludeForClient: Boolean(ing.excludeForClient)
       }))
     });
@@ -171,7 +209,10 @@ export function MenuPage() {
   const addIngredient = () => {
     setFormState((prev) => ({
       ...prev,
-      ingredients: [...prev.ingredients, { name: "", qty: "", unit: "", excludeForClient: false }]
+      ingredients: [
+        ...prev.ingredients,
+        { name: "", qty: "", unitId: units[0]?.id ?? "", excludeForClient: false }
+      ]
     }));
   };
 
@@ -211,13 +252,16 @@ export function MenuPage() {
       showSnackbar("Добавьте хотя бы один ингредиент.", "warning");
       return;
     }
+    if (formState.ingredients.some((ing) => !ing.name.trim() || !ing.unitId)) {
+      showSnackbar("Для каждого ингредиента укажите название и единицу измерения.", "warning");
+      return;
+    }
     setSaving(true);
     const payload: Dish = {
       id: formState.id,
       category: formState.category.trim(),
       title: formState.title.trim(),
       description: formState.description.trim() || undefined,
-      portionSize: formState.portionSize ? Number(formState.portionSize) : null,
       active: true,
       ingredients: formState.ingredients
         .filter((ing) => ing.name.trim())
@@ -225,7 +269,7 @@ export function MenuPage() {
           id: ing.id,
           name: ing.name.trim(),
           qty: ing.qty ? Number(ing.qty) : 0,
-          unit: ing.unit.trim(),
+          unitId: ing.unitId,
           excludeForClient: ing.excludeForClient
         }))
     };
@@ -329,14 +373,13 @@ export function MenuPage() {
                     Категория
                   </TableSortLabel>
                 </TableCell>
-                <TableCell>Порция</TableCell>
                 <TableCell align="right">Действия</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading ? (
                 <TableRow>
-                  <TableCell colSpan={4} align="center">
+                  <TableCell colSpan={3} align="center">
                     <CircularProgress size={24} />
                   </TableCell>
                 </TableRow>
@@ -345,7 +388,6 @@ export function MenuPage() {
                   <TableRow key={dish.id ?? dish.title}>
                     <TableCell>{dish.title}</TableCell>
                     <TableCell>{dish.category}</TableCell>
-                    <TableCell>{dish.portionSize ?? "—"}</TableCell>
                     <TableCell align="right">
                       <IconButton size="small" onClick={() => openEditDialog(dish)} aria-label="edit">
                         <EditIcon />
@@ -363,7 +405,7 @@ export function MenuPage() {
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={4} align="center">
+                  <TableCell colSpan={3} align="center">
                     Ничего не найдено.
                   </TableCell>
                 </TableRow>
@@ -406,13 +448,6 @@ export function MenuPage() {
             value={formState.description}
             onChange={(e) => setFormState((prev) => ({ ...prev, description: e.target.value }))}
           />
-          <TextField
-            label="Размер порции"
-            type="number"
-            inputProps={{ min: 0, step: "0.1" }}
-            value={formState.portionSize}
-            onChange={(e) => setFormState((prev) => ({ ...prev, portionSize: e.target.value }))}
-          />
           <Box>
             <Typography variant="subtitle1" sx={{ mb: 1 }}>
               Ингредиенты
@@ -452,11 +487,30 @@ export function MenuPage() {
                       />
                     </TableCell>
                     <TableCell>
-                      <TextField
-                        size="small"
-                        value={ing.unit}
-                        onChange={(e) => updateIngredient(idx, { unit: e.target.value })}
-                      />
+                      <FormControl size="small" fullWidth disabled={!units.length}>
+                        <InputLabel id={`unit-select-${idx}`}>Ед.</InputLabel>
+                        <Select
+                          labelId={`unit-select-${idx}`}
+                          label="Ед."
+                          value={ing.unitId}
+                          displayEmpty
+                          onChange={(event: SelectChangeEvent<string>) =>
+                            updateIngredient(idx, { unitId: event.target.value })
+                          }
+                        >
+                          {units.length ? (
+                            units.map((unit) => (
+                              <MenuItem key={unit.id} value={unit.id}>
+                                {unit.shortName} — {unit.name}
+                              </MenuItem>
+                            ))
+                          ) : (
+                            <MenuItem value="" disabled>
+                              Нет данных
+                            </MenuItem>
+                          )}
+                        </Select>
+                      </FormControl>
                     </TableCell>
                     <TableCell align="center">
                       <Checkbox

@@ -13,7 +13,6 @@ public class Dish {
     public String category;
     public String title;
     public String description;
-    public Double portionSize;
     public Boolean active = true;
     public OffsetDateTime createdAt;
     public OffsetDateTime updatedAt;
@@ -21,5 +20,4 @@ public class Dish {
     @OneToMany(mappedBy = "dish", cascade = CascadeType.ALL, orphanRemoval = true, fetch = FetchType.LAZY)
     public List<DishIngredient> ingredients;
 }
-
 

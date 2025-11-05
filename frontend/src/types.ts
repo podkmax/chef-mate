@@ -1,9 +1,17 @@
+export interface Unit {
+  id: string;
+  name: string;
+  shortName: string;
+}
+
 export interface DishIngredient {
   id?: number;
   name: string;
   qty: number | null;
-  unit: string;
+  unitId: string;
+  unit?: Unit | null;
   excludeForClient?: boolean;
+  baseProductId?: string | null;
 }
 
 export interface Dish {
@@ -11,7 +19,6 @@ export interface Dish {
   category: string;
   title: string;
   description?: string;
-  portionSize?: number | null;
   active?: boolean | null;
   ingredients: DishIngredient[];
 }
@@ -34,7 +41,11 @@ export interface Order {
 export interface IngredientAggregate {
   name: string;
   totalQty: number;
-  unit?: string | null;
+  unitId?: string | null;
+  unit?: Unit | null;
+  stockQty?: number | null;
+  requiredQty?: number | null;
+  baseProductId?: string | null;
 }
 
 export interface ClientStockDto {

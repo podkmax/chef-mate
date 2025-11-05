@@ -5,12 +5,12 @@ import com.chefmate.dto.DishIngredientDto;
 import com.chefmate.model.BaseProduct;
 import com.chefmate.model.Dish;
 import com.chefmate.model.DishIngredient;
+import com.chefmate.model.Unit;
 import com.chefmate.repo.BaseProductRepository;
 import com.chefmate.repo.DishIngredientRepository;
 import com.chefmate.repo.DishRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.util.Locale;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -20,10 +20,17 @@ public class DishService {
     private final DishRepository dishRepo;
     private final DishIngredientRepository ingredientRepo;
     private final BaseProductRepository baseProductRepo;
-    public DishService(DishRepository dishRepo, DishIngredientRepository ingredientRepo, BaseProductRepository baseProductRepo) {
+    private final UnitService unitService;
+
+    public DishService(
+            DishRepository dishRepo,
+            DishIngredientRepository ingredientRepo,
+            BaseProductRepository baseProductRepo,
+            UnitService unitService) {
         this.dishRepo = dishRepo;
         this.ingredientRepo = ingredientRepo;
         this.baseProductRepo = baseProductRepo;
+        this.unitService = unitService;
     }
 
     @Transactional(readOnly = true)
@@ -50,7 +57,6 @@ public class DishService {
         d.category = dto.category;
         d.title = dto.title;
         d.description = dto.description;
-        d.portionSize = dto.portionSize;
         List<DishIngredient> targetIngredients = d.ingredients != null ? d.ingredients : new ArrayList<>();
         targetIngredients.clear();
         if (dto.ingredients != null) {
@@ -78,7 +84,6 @@ public class DishService {
         r.category = d.category;
         r.title = d.title;
         r.description = d.description;
-        r.portionSize = d.portionSize;
         r.active = d.active;
         if (d.ingredients != null)
             r.ingredients = d.ingredients.stream().map(this::toIngredientDto).collect(Collectors.toList());
@@ -89,7 +94,10 @@ public class DishService {
         r.id = e.id;
         r.name = e.name;
         r.qty = e.qty;
-        r.unit = e.unit;
+        if (e.unit != null) {
+            r.unitId = e.unit.id;
+            r.unit = unitService.toDto(e.unit);
+        }
         r.excludeForClient = e.excludeForClient;
         r.baseProductId = e.baseProduct != null ? e.baseProduct.id : null;
         return r;
@@ -99,7 +107,6 @@ public class DishService {
         entity.category = d.category;
         entity.title = d.title;
         entity.description = d.description;
-        entity.portionSize = d.portionSize;
         entity.active = d.active != null ? d.active : true;
         List<DishIngredient> ingredients = new ArrayList<>();
         if (d.ingredients != null) {
@@ -116,13 +123,14 @@ public class DishService {
         e.name = d.name;
         e.qty = d.qty;
         e.excludeForClient = d.excludeForClient != null ? d.excludeForClient : false;
-        BaseProduct baseProduct = resolveBaseProduct(d);
+        Unit unit = resolveUnit(d);
+        e.unit = unit;
+        BaseProduct baseProduct = resolveBaseProduct(d, unit);
         e.baseProduct = baseProduct;
-        e.unit = d.unit != null ? d.unit : (baseProduct != null ? baseProduct.unit : null);
         return e;
     }
 
-    private BaseProduct resolveBaseProduct(DishIngredientDto dto) {
+    private BaseProduct resolveBaseProduct(DishIngredientDto dto, Unit unit) {
         BaseProduct baseProduct = null;
         if (dto.baseProductId != null) {
             baseProduct = baseProductRepo.findById(dto.baseProductId).orElse(null);
@@ -140,13 +148,16 @@ public class DishService {
         }
         BaseProduct created = new BaseProduct();
         created.name = name;
-        created.unit = sanitizeUnit(dto.unit);
+        created.unit = unit != null ? unit.shortName : unitService.getDefaultUnit().shortName;
         created.isFreezable = Boolean.TRUE;
         return baseProductRepo.save(created);
     }
 
-    private String sanitizeUnit(String unit) {
-        String normalized = unit != null ? unit.trim().toLowerCase(Locale.ROOT) : "";
-        return "pcs".equals(normalized) ? "pcs" : "g";
+    private Unit resolveUnit(DishIngredientDto dto) {
+        if (dto.unitId == null) {
+            throw new IllegalArgumentException("Для ингредиента необходимо указать единицу измерения.");
+        }
+        return unitService.getRequiredUnit(dto.unitId);
     }
+
 }
