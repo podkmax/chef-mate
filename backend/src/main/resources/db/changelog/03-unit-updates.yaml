@@ -74,6 +74,17 @@ databaseChangeLog:
               - column: { name: short_name, value: "гол" }
 
   - changeSet:
+      id: 20250130-03-drop-unit-checks
+      author: codex
+      changes:
+        - sql:
+            sql: |
+              ALTER TABLE base_product DROP CONSTRAINT IF EXISTS ck_base_product_unit;
+        - sql:
+            sql: |
+              ALTER TABLE client_stock DROP CONSTRAINT IF EXISTS ck_client_stock_unit;
+
+  - changeSet:
       id: 20250130-04-update-dish-ingredient-unit
       author: codex
       changes:
@@ -123,6 +134,8 @@ databaseChangeLog:
             baseColumnNames: unit_id
             referencedTableName: unit
             referencedColumnNames: id
+            constraintName: fk_dish_ingredient_unit
+            onDelete: restrict
         - dropColumn:
             tableName: dish_ingredient
             columnName: unit
