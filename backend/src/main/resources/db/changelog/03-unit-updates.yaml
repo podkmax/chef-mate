@@ -9,10 +9,10 @@ databaseChangeLog:
               - column:
                   name: id
                   type: UUID
+                  defaultValueComputed: gen_random_uuid()
                   constraints:
                     primaryKey: true
                     nullable: false
-                  defaultValueComputed: gen_random_uuid()
               - column:
                   name: name
                   type: varchar(100)
@@ -74,17 +74,6 @@ databaseChangeLog:
               - column: { name: short_name, value: "гол" }
 
   - changeSet:
-      id: 20250130-03-drop-unit-checks
-      author: codex
-      changes:
-        - dropCheckConstraint:
-            tableName: base_product
-            constraintName: ck_base_product_unit
-        - dropCheckConstraint:
-            tableName: client_stock
-            constraintName: ck_client_stock_unit
-
-  - changeSet:
       id: 20250130-04-update-dish-ingredient-unit
       author: codex
       changes:
@@ -129,14 +118,11 @@ databaseChangeLog:
         - addNotNullConstraint:
             tableName: dish_ingredient
             columnName: unit_id
-            constraintName: nn_dish_ingredient_unit
         - addForeignKeyConstraint:
             baseTableName: dish_ingredient
             baseColumnNames: unit_id
             referencedTableName: unit
             referencedColumnNames: id
-            constraintName: fk_dish_ingredient_unit
-            onDelete: restrict
         - dropColumn:
             tableName: dish_ingredient
             columnName: unit
@@ -150,136 +136,14 @@ databaseChangeLog:
       author: codex
       changes:
         - sql:
-            sql: |
-              UPDATE base_product
-              SET unit = 'г'
-              WHERE unit IS NULL
-                 OR trim(unit) = ''
-                 OR lower(trim(unit)) IN ('g','gr','gram','grams','гр','г');
+            sql: "UPDATE base_product SET unit = 'г' WHERE unit IS NULL OR trim(unit) = '' OR lower(trim(unit)) IN ('g','gr','gram','grams','гр','г');"
         - sql:
-            sql: |
-              UPDATE base_product
-              SET unit = 'кг'
-              WHERE lower(trim(unit)) IN ('kg','кг','килограмм','килограммы');
+            sql: "UPDATE base_product SET unit = 'кг' WHERE lower(trim(unit)) IN ('kg','кг','килограмм','килограммы');"
         - sql:
-            sql: |
-              UPDATE base_product
-              SET unit = 'мл'
-              WHERE lower(trim(unit)) IN ('ml','мл','миллилитр','миллилитры');
+            sql: "UPDATE base_product SET unit = 'мл' WHERE lower(trim(unit)) IN ('ml','мл','миллилитр','миллилитры');"
         - sql:
-            sql: |
-              UPDATE base_product
-              SET unit = 'л'
-              WHERE lower(trim(unit)) IN ('l','литр','литры','л');
+            sql: "UPDATE base_product SET unit = 'л' WHERE lower(trim(unit)) IN ('l','литр','литры','л');"
         - sql:
-            sql: |
-              UPDATE base_product
-              SET unit = 'шт'
-              WHERE lower(trim(unit)) IN ('pcs','piece','pieces','шт','шт.');
+            sql: "UPDATE base_product SET unit = 'шт' WHERE lower(trim(unit)) IN ('pcs','piece','pieces','шт','шт.');"
         - sql:
-            sql: |
-              UPDATE base_product
-              SET unit = 'уп'
-              WHERE lower(trim(unit)) IN ('уп','уп.','упаковка','упаковки');
-        - sql:
-            sql: |
-              UPDATE base_product
-              SET unit = 'зуб'
-              WHERE lower(trim(unit)) IN ('зуб','зубчик','зубчики','зубчиков');
-        - sql:
-            sql: |
-              UPDATE base_product
-              SET unit = 'гол'
-              WHERE lower(trim(unit)) IN ('гол','головка','головки');
-        - sql:
-            sql: |
-              UPDATE client_stock
-              SET unit = 'г'
-              WHERE unit IS NULL
-                 OR trim(unit) = ''
-                 OR lower(trim(unit)) IN ('g','gr','gram','grams','гр','г');
-        - sql:
-            sql: |
-              UPDATE client_stock
-              SET unit = 'кг'
-              WHERE lower(trim(unit)) IN ('kg','кг','килограмм','килограммы');
-        - sql:
-            sql: |
-              UPDATE client_stock
-              SET unit = 'мл'
-              WHERE lower(trim(unit)) IN ('ml','мл','миллилитр','миллилитры');
-        - sql:
-            sql: |
-              UPDATE client_stock
-              SET unit = 'л'
-              WHERE lower(trim(unit)) IN ('l','литр','литры','л');
-        - sql:
-            sql: |
-              UPDATE client_stock
-              SET unit = 'шт'
-              WHERE lower(trim(unit)) IN ('pcs','piece','pieces','шт','шт.');
-        - sql:
-            sql: |
-              UPDATE client_stock
-              SET unit = 'уп'
-              WHERE lower(trim(unit)) IN ('уп','уп.','упаковка','упаковки');
-        - sql:
-            sql: |
-              UPDATE client_stock
-              SET unit = 'зуб'
-              WHERE lower(trim(unit)) IN ('зуб','зубчик','зубчики','зубчиков');
-        - sql:
-            sql: |
-              UPDATE client_stock
-              SET unit = 'гол'
-              WHERE lower(trim(unit)) IN ('гол','головка','головки');
-        - sql:
-            sql: |
-              UPDATE order_ingredient_aggregate
-              SET unit = 'г'
-              WHERE unit IS NULL
-                 OR trim(unit) = ''
-                 OR lower(trim(unit)) IN ('g','gr','gram','grams','гр','г');
-        - sql:
-            sql: |
-              UPDATE order_ingredient_aggregate
-              SET unit = 'кг'
-              WHERE lower(trim(unit)) IN ('kg','кг','килограмм','килограммы');
-        - sql:
-            sql: |
-              UPDATE order_ingredient_aggregate
-              SET unit = 'мл'
-              WHERE lower(trim(unit)) IN ('ml','мл','миллилитр','миллилитры');
-        - sql:
-            sql: |
-              UPDATE order_ingredient_aggregate
-              SET unit = 'л'
-              WHERE lower(trim(unit)) IN ('l','литр','литры','л');
-        - sql:
-            sql: |
-              UPDATE order_ingredient_aggregate
-              SET unit = 'шт'
-              WHERE lower(trim(unit)) IN ('pcs','piece','pieces','шт','шт.');
-        - sql:
-            sql: |
-              UPDATE order_ingredient_aggregate
-              SET unit = 'уп'
-              WHERE lower(trim(unit)) IN ('уп','уп.','упаковка','упаковки');
-        - sql:
-            sql: |
-              UPDATE order_ingredient_aggregate
-              SET unit = 'зуб'
-              WHERE lower(trim(unit)) IN ('зуб','зубчик','зубчики','зубчиков');
-        - sql:
-            sql: |
-              UPDATE order_ingredient_aggregate
-              SET unit = 'гол'
-              WHERE lower(trim(unit)) IN ('гол','головка','головки');
-
-  - changeSet:
-      id: 20250130-06-drop-portion-size
-      author: codex
-      changes:
-        - dropColumn:
-            tableName: dish
-            columnName: portion_size
+            sql: "UPDATE base_product SET_
