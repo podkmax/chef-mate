@@ -146,4 +146,16 @@ databaseChangeLog:
         - sql:
             sql: "UPDATE base_product SET unit = 'шт' WHERE lower(trim(unit)) IN ('pcs','piece','pieces','шт','шт.');"
         - sql:
-            sql: "UPDATE base_product SET_
+            sql: "UPDATE base_product SET unit = 'уп' WHERE lower(trim(unit)) IN ('уп','уп.','упаковка','упаковки');"
+        - sql:
+            sql: "UPDATE base_product SET unit = 'зуб' WHERE lower(trim(unit)) IN ('зуб','зубчик','зубчики','зубчиков');"
+        - sql:
+            sql: "UPDATE base_product SET unit = 'гол' WHERE lower(trim(unit)) IN ('гол','головка','головки');"
+
+  - changeSet:
+      id: 20250130-06-drop-portion-size
+      author: codex
+      changes:
+        - dropColumn:
+            tableName: dish
+            columnName: portion_size
