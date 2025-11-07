@@ -167,6 +167,7 @@ public class OrderService {
                     Unit unit = ingr.unit != null
                             ? ingr.unit
                             : unitService.resolveUnitOrDefault(baseProduct.unit);
+                    String unitShort = resolveUnitShortName(unit, baseProduct);
                     BigDecimal q = calculateQuantity(ingr, item);
                     String displayName = baseProduct.name != null ? baseProduct.name : ingr.name;
                     String key = normalizeKey(displayName) + "|" + (unit != null ? unit.id : "default");
@@ -178,12 +179,15 @@ public class OrderService {
                             dto.requiredQty = q;
                             dto.unitId = unit != null ? unit.id : null;
                             dto.unit = unit != null ? unitService.toDto(unit) : null;
-                            dto.unitShortName = dto.unit != null ? dto.unit.shortName : null;
+                            dto.unitShortName = unitShort;
                             dto.baseProductId = baseProduct.id;
                             return dto;
                         } else {
                             value.totalQty = value.totalQty.add(q);
                             value.requiredQty = value.totalQty;
+                            if (value.unitShortName == null || value.unitShortName.isBlank()) {
+                                value.unitShortName = unitShort;
+                            }
                             return value;
                         }
                     });
@@ -200,6 +204,7 @@ public class OrderService {
                 }
                 for (DishIngredient ingr : dish.ingredients) {
                     Unit unit = ingr.unit != null ? ingr.unit : unitService.getDefaultUnit();
+                    String unitShort = resolveUnitShortName(unit, ingr.baseProduct);
                     BigDecimal q = calculateQuantity(ingr, item);
                     String name = ingr.name != null && !ingr.name.isBlank()
                             ? ingr.name
@@ -212,11 +217,14 @@ public class OrderService {
                             dto.totalQty = q;
                             dto.unitId = unit != null ? unit.id : null;
                             dto.unit = unit != null ? unitService.toDto(unit) : null;
-                            dto.unitShortName = dto.unit != null ? dto.unit.shortName : null;
+                            dto.unitShortName = unitShort;
                             dto.baseProductId = ingr.baseProduct != null ? ingr.baseProduct.id : null;
                             return dto;
                         } else {
                             value.totalQty = value.totalQty.add(q);
+                            if (value.unitShortName == null || value.unitShortName.isBlank()) {
+                                value.unitShortName = unitShort;
+                            }
                             return value;
                         }
                     });
@@ -237,6 +245,16 @@ public class OrderService {
             return "";
         }
         return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String resolveUnitShortName(Unit unit, BaseProduct baseProduct) {
+        if (unit != null && unit.shortName != null && !unit.shortName.isBlank()) {
+            return unit.shortName;
+        }
+        if (baseProduct != null && baseProduct.unit != null && !baseProduct.unit.isBlank()) {
+            return unitService.normalizeShortName(baseProduct.unit);
+        }
+        return null;
     }
 
     private void applyStockAdjustments(Order order, Collection<IngredientAggregateDto> items, boolean reduceByStock) {
