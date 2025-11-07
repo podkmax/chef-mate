@@ -45,7 +45,9 @@ public class OrderExportService {
                 row.createCell(0).setCellValue(item.name != null ? item.name : "");
                 row.createCell(1).setCellValue(
                         item.totalQty != null ? item.totalQty.stripTrailingZeros().toPlainString() : "");
-                String unitLabel = item.unit != null && item.unit.shortName != null ? item.unit.shortName : "";
+                String unitLabel = item.unitShortName != null && !item.unitShortName.isBlank()
+                        ? item.unitShortName
+                        : (item.unit != null && item.unit.shortName != null ? item.unit.shortName : "");
                 row.createCell(2).setCellValue(unitLabel);
             }
             workbook.write(out);
@@ -64,8 +66,10 @@ public class OrderExportService {
             List<IngredientAggregateDto> perOrder = orderService.aggregateIngredients(order.id, false);
             for (IngredientAggregateDto ingredient : perOrder) {
                 String name = ingredient.name != null ? ingredient.name : "";
-                String unitShort = ingredient.unit != null ? ingredient.unit.shortName : "";
-                String unitKey = ingredient.unitId != null ? ingredient.unitId.toString() : unitShort;
+                String shortName = ingredient.unitShortName != null && !ingredient.unitShortName.isBlank()
+                        ? ingredient.unitShortName
+                        : (ingredient.unit != null ? ingredient.unit.shortName : "");
+                String unitKey = ingredient.unitId != null ? ingredient.unitId.toString() : shortName;
                 String key = name + "|" + unitKey;
                 result.compute(key, (k, existing) -> {
                     if (existing == null) {
@@ -73,6 +77,7 @@ public class OrderExportService {
                         dto.name = name;
                         dto.unitId = ingredient.unitId;
                         dto.unit = ingredient.unit;
+                        dto.unitShortName = ingredient.unitShortName != null ? ingredient.unitShortName : shortName;
                         dto.totalQty = safeCopy(ingredient.totalQty);
                         return dto;
                     } else {
@@ -80,6 +85,9 @@ public class OrderExportService {
                         existing.unitId = existing.unitId != null ? existing.unitId : ingredient.unitId;
                         if (existing.unit == null) {
                             existing.unit = ingredient.unit;
+                        }
+                        if (existing.unitShortName == null || existing.unitShortName.isBlank()) {
+                            existing.unitShortName = ingredient.unitShortName != null ? ingredient.unitShortName : shortName;
                         }
                         return existing;
                     }

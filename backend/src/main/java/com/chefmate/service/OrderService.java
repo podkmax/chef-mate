@@ -12,6 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -147,7 +148,7 @@ public class OrderService {
         }
         Map<Long, Dish> effectiveDishMap = dishMap != null ? dishMap : loadDishMap(order);
         if (forClient) {
-            Map<UUID, IngredientAggregateDto> aggr = new LinkedHashMap<>();
+            Map<String, IngredientAggregateDto> aggr = new LinkedHashMap<>();
             for (OrderItem item : order.items) {
                 Dish dish = effectiveDishMap.get(item.dishId);
                 if (dish == null || dish.ingredients == null) {
@@ -163,16 +164,21 @@ public class OrderService {
                     if (baseProduct == null) {
                         continue;
                     }
-                    Unit unit = ingr.unit != null ? ingr.unit : unitService.getDefaultUnit();
+                    Unit unit = ingr.unit != null
+                            ? ingr.unit
+                            : unitService.resolveUnitOrDefault(baseProduct.unit);
                     BigDecimal q = calculateQuantity(ingr, item);
-                    aggr.compute(baseProduct.id, (key, value) -> {
+                    String displayName = baseProduct.name != null ? baseProduct.name : ingr.name;
+                    String key = normalizeKey(displayName) + "|" + (unit != null ? unit.id : "default");
+                    aggr.compute(key, (mapKey, value) -> {
                         if (value == null) {
                             IngredientAggregateDto dto = new IngredientAggregateDto();
-                            dto.name = baseProduct.name != null ? baseProduct.name : ingr.name;
+                            dto.name = displayName;
                             dto.totalQty = q;
                             dto.requiredQty = q;
-                            dto.unitId = unit.id;
-                            dto.unit = unitService.toDto(unit);
+                            dto.unitId = unit != null ? unit.id : null;
+                            dto.unit = unit != null ? unitService.toDto(unit) : null;
+                            dto.unitShortName = dto.unit != null ? dto.unit.shortName : null;
                             dto.baseProductId = baseProduct.id;
                             return dto;
                         } else {
@@ -183,7 +189,7 @@ public class OrderService {
                     });
                 }
             }
-            applyStockAdjustments(order, aggr, true);
+            applyStockAdjustments(order, aggr.values(), true);
             return new ArrayList<>(aggr.values());
         } else {
             Map<String, IngredientAggregateDto> aggr = new LinkedHashMap<>();
@@ -198,14 +204,15 @@ public class OrderService {
                     String name = ingr.name != null && !ingr.name.isBlank()
                             ? ingr.name
                             : (ingr.baseProduct != null ? ingr.baseProduct.name : "Ингредиент");
-                    String key = name.trim().toLowerCase(Locale.ROOT) + "|" + unit.id;
+                    String key = normalizeKey(name) + "|" + (unit != null ? unit.id : "default");
                     aggr.compute(key, (k, value) -> {
                         if (value == null) {
                             IngredientAggregateDto dto = new IngredientAggregateDto();
                             dto.name = name;
                             dto.totalQty = q;
-                            dto.unitId = unit.id;
-                            dto.unit = unitService.toDto(unit);
+                            dto.unitId = unit != null ? unit.id : null;
+                            dto.unit = unit != null ? unitService.toDto(unit) : null;
+                            dto.unitShortName = dto.unit != null ? dto.unit.shortName : null;
                             dto.baseProductId = ingr.baseProduct != null ? ingr.baseProduct.id : null;
                             return dto;
                         } else {
@@ -225,16 +232,28 @@ public class OrderService {
         return baseQty.multiply(BigDecimal.valueOf(portions));
     }
 
-    private void applyStockAdjustments(Order order, Map<UUID, IngredientAggregateDto> aggr, boolean reduceByStock) {
-        if (order.userId == null || aggr.isEmpty()) {
+    private String normalizeKey(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private void applyStockAdjustments(Order order, Collection<IngredientAggregateDto> items, boolean reduceByStock) {
+        if (order.userId == null || items.isEmpty()) {
             return;
         }
         List<ClientStock> stockItems = clientStockRepository.findByUserId(order.userId);
         Map<UUID, ClientStock> stockMap = stockItems.stream()
                 .collect(Collectors.toMap(cs -> cs.baseProduct.id, cs -> cs, (a, b) -> a, LinkedHashMap::new));
-        for (Map.Entry<UUID, IngredientAggregateDto> entry : aggr.entrySet()) {
-            ClientStock stock = stockMap.get(entry.getKey());
-            IngredientAggregateDto dto = entry.getValue();
+        for (IngredientAggregateDto dto : items) {
+            UUID baseProductId = dto.baseProductId != null ? dto.baseProductId : resolveBaseProductId(dto.name);
+            if (baseProductId == null) {
+                dto.stockQty = BigDecimal.ZERO;
+                dto.requiredQty = dto.totalQty;
+                continue;
+            }
+            ClientStock stock = stockMap.get(baseProductId);
             if (stock == null) {
                 dto.stockQty = BigDecimal.ZERO;
                 dto.requiredQty = dto.totalQty;

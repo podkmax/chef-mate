@@ -265,7 +265,9 @@ public class CookBotService {
 
     private static String formatIngredient(IngredientAggregateDto ingr) {
         String qty = ingr.totalQty != null ? ingr.totalQty.stripTrailingZeros().toPlainString() : "?";
-        String unit = (ingr.unit != null && ingr.unit.shortName != null) ? ingr.unit.shortName : "";
+        String unit = ingr.unitShortName != null && !ingr.unitShortName.isBlank()
+                ? ingr.unitShortName
+                : (ingr.unit != null && ingr.unit.shortName != null ? ingr.unit.shortName : "");
         return ingr.name + " — " + qty + (unit.isBlank() ? "" : " " + unit);
     }
 

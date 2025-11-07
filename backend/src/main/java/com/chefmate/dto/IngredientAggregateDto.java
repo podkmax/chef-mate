@@ -8,6 +8,7 @@ public class IngredientAggregateDto {
     public BigDecimal totalQty;
     public UUID unitId;
     public UnitDto unit;
+    public String unitShortName;
     public BigDecimal stockQty;
     public BigDecimal requiredQty;
     public UUID baseProductId;

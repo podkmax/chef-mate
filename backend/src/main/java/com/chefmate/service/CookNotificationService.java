@@ -91,9 +91,12 @@ public class CookNotificationService {
                 String qty = ingr.totalQty != null
                         ? ingr.totalQty.stripTrailingZeros().toPlainString()
                         : "0";
-                String unit = ingr.unit != null && ingr.unit.shortName != null && !ingr.unit.shortName.isBlank()
-                        ? " " + ingr.unit.shortName
-                        : "";
+                String unitShort = ingr.unitShortName != null && !ingr.unitShortName.isBlank()
+                        ? ingr.unitShortName
+                        : (ingr.unit != null && ingr.unit.shortName != null && !ingr.unit.shortName.isBlank()
+                        ? ingr.unit.shortName
+                        : "");
+                String unit = unitShort.isBlank() ? "" : " " + unitShort;
                 sb.append("— ")
                         .append(name)
                         .append(" — ")
