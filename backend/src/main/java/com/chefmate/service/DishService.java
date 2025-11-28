@@ -7,7 +7,6 @@ import com.chefmate.model.Dish;
 import com.chefmate.model.DishIngredient;
 import com.chefmate.model.Unit;
 import com.chefmate.repo.BaseProductRepository;
-import com.chefmate.repo.DishIngredientRepository;
 import com.chefmate.repo.DishRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,17 +17,14 @@ import java.util.stream.Collectors;
 @Service
 public class DishService {
     private final DishRepository dishRepo;
-    private final DishIngredientRepository ingredientRepo;
     private final BaseProductRepository baseProductRepo;
     private final UnitService unitService;
 
     public DishService(
             DishRepository dishRepo,
-            DishIngredientRepository ingredientRepo,
             BaseProductRepository baseProductRepo,
             UnitService unitService) {
         this.dishRepo = dishRepo;
-        this.ingredientRepo = ingredientRepo;
         this.baseProductRepo = baseProductRepo;
         this.unitService = unitService;
     }
@@ -57,8 +53,7 @@ public class DishService {
         d.category = dto.category;
         d.title = dto.title;
         d.description = dto.description;
-        List<DishIngredient> targetIngredients = d.ingredients != null ? d.ingredients : new ArrayList<>();
-        targetIngredients.clear();
+        List<DishIngredient> targetIngredients = new ArrayList<>();
         if (dto.ingredients != null) {
             for (DishIngredientDto ingrDto : dto.ingredients) {
                 DishIngredient ingr = fromIngredientDto(ingrDto);
@@ -66,7 +61,12 @@ public class DishService {
                 targetIngredients.add(ingr);
             }
         }
-        d.ingredients = targetIngredients;
+        if (d.ingredients == null) {
+            d.ingredients = new ArrayList<>();
+        } else {
+            d.ingredients.clear();
+        }
+        d.ingredients.addAll(targetIngredients);
         dishRepo.save(d);
         return toDto(d);
     }
@@ -112,8 +112,8 @@ public class DishService {
         if (d.ingredients != null) {
             ingredients = d.ingredients.stream().map(this::fromIngredientDto).collect(Collectors.toList());
         }
-        for (DishIngredient ingr : ingredients) {
-            ingr.dish = entity;
+        for (DishIngredient ingredient : ingredients) {
+            ingredient.dish = entity;
         }
         entity.ingredients = ingredients;
         return entity;
