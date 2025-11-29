@@ -56,97 +56,129 @@ public class MenuImportService {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "В файле отсутствуют листы.");
             }
             Sheet sheet = workbook.getSheetAt(0);
-            Map<String, ImportedDish> dishes = new LinkedHashMap<>();
-            int skippedRows = 0;
-            for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
-                Row row = sheet.getRow(rowIndex);
-                if (row == null) {
-                    continue;
-                }
-                String dishName = getString(row.getCell(0));
-                if (dishName == null || dishName.isBlank()) {
-                    skippedRows++;
-                    continue;
-                }
-                ImportedDish importedDish = dishes.computeIfAbsent(dishName.trim(), ImportedDish::new);
-                String description = getString(row.getCell(1));
-                if (description != null && !description.isBlank()) {
-                    importedDish.description = description.trim();
-                }
-                String ingredientName = getString(row.getCell(2));
-                if (ingredientName == null || ingredientName.isBlank()) {
-                    skippedRows++;
-                    continue;
-                }
-                BigDecimal qty;
-                try {
-                    qty = parseDecimal(row.getCell(3));
-                } catch (NumberFormatException ex) {
-                    skippedRows++;
-                    continue;
-                }
-                if (qty == null) {
-                    qty = BigDecimal.ZERO;
-                }
-                Unit unit = unitService.resolveUnitOrDefault(getString(row.getCell(4)));
-                Boolean exclude = parseBoolean(row.getCell(5));
-                BaseProduct baseProduct = resolveBaseProduct(ingredientName.trim(), unit);
-                importedDish.ingredients.add(new ImportedIngredient(
-                        ingredientName.trim(),
-                        qty,
-                        unit,
-                        Boolean.TRUE.equals(exclude),
-                        baseProduct
-                ));
-            }
-            int created = 0;
-            int updated = 0;
-            OffsetDateTime now = OffsetDateTime.now();
-            for (ImportedDish imported : dishes.values()) {
-                if (imported.ingredients.isEmpty()) {
-                    skippedRows++;
-                    continue;
-                }
-                Optional<Dish> existingOpt = dishRepository.findByTitleIgnoreCase(imported.name);
-                if (existingOpt.isPresent()) {
-                    Dish existing = existingOpt.get();
-                    if (imported.description != null) {
-                        existing.description = imported.description;
-                    }
-                    existing.updatedAt = now;
-                    replaceIngredients(existing, imported.ingredients);
-                    dishRepository.save(existing);
-                    updated++;
-                } else {
-                    Dish fresh = new Dish();
-                    fresh.title = imported.name;
-                    fresh.description = imported.description;
-                    fresh.category = "Imported";
-                    fresh.active = true;
-                    fresh.createdAt = now;
-                    fresh.updatedAt = now;
-                    fresh.ingredients = new ArrayList<>();
-                    for (ImportedIngredient ingr : imported.ingredients) {
-                        DishIngredient di = new DishIngredient();
-                        di.dish = fresh;
-                        di.name = ingr.name;
-                        di.qty = ingr.qty;
-                        di.unit = ingr.unit;
-                        di.baseProduct = ingr.baseProduct;
-                        di.excludeForClient = ingr.excludeForClient;
-                        fresh.ingredients.add(di);
-                    }
-                    dishRepository.save(fresh);
-                    created++;
-                }
-            }
-            return new MenuImportSummary(created, updated, skippedRows);
+            ParsedImportResult result = parseSheet(sheet);
+            ImportStats stats = persistDishes(result.dishes(), result.skippedRows());
+            return new MenuImportSummary(stats.created(), stats.updated(), stats.skipped());
         } catch (IOException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Не удалось прочитать Excel файл.", ex);
         } catch (IllegalArgumentException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage(), ex);
         }
     }
+
+    private ParsedImportResult parseSheet(Sheet sheet) {
+        Map<String, ImportedDish> dishes = new LinkedHashMap<>();
+        int skippedRows = 0;
+        for (int rowIndex = 1; rowIndex <= sheet.getLastRowNum(); rowIndex++) {
+            Row row = sheet.getRow(rowIndex);
+            if (row == null) {
+                continue;
+            }
+            ParsedRow parsedRow = parseRow(row);
+            if (parsedRow == null) {
+                skippedRows++;
+                continue;
+            }
+            ImportedDish importedDish = dishes.computeIfAbsent(parsedRow.dishName(), ImportedDish::new);
+            if (parsedRow.description() != null && !parsedRow.description().isBlank()) {
+                importedDish.setDescription(parsedRow.description().trim());
+            }
+            ImportedIngredient ingredient = parsedRow.ingredient();
+            if (ingredient == null) {
+                skippedRows++;
+                continue;
+            }
+            importedDish.addIngredient(ingredient);
+        }
+        return new ParsedImportResult(dishes, skippedRows);
+    }
+
+    private ParsedRow parseRow(Row row) {
+        String dishName = getString(row.getCell(0));
+        if (dishName == null || dishName.isBlank()) {
+            return null;
+        }
+        String description = getString(row.getCell(1));
+        String ingredientName = getString(row.getCell(2));
+        if (ingredientName == null || ingredientName.isBlank()) {
+            return null;
+        }
+        BigDecimal qty;
+        try {
+            qty = parseDecimal(row.getCell(3));
+        } catch (NumberFormatException ex) {
+            return null;
+        }
+        if (qty == null) {
+            qty = BigDecimal.ZERO;
+        }
+        Unit unit = unitService.resolveUnitOrDefault(getString(row.getCell(4)));
+        Boolean exclude = parseBoolean(row.getCell(5));
+        BaseProduct baseProduct = resolveBaseProduct(ingredientName.trim(), unit);
+        ImportedIngredient ingredient = new ImportedIngredient(
+                ingredientName.trim(),
+                qty,
+                unit,
+                Boolean.TRUE.equals(exclude),
+                baseProduct
+        );
+        return new ParsedRow(dishName.trim(), description, ingredient);
+    }
+
+    private ImportStats persistDishes(Map<String, ImportedDish> dishes, int initialSkipped) {
+        int skippedRows = initialSkipped;
+        int created = 0;
+        int updated = 0;
+        OffsetDateTime now = OffsetDateTime.now();
+        for (ImportedDish imported : dishes.values()) {
+            if (imported.getIngredients().isEmpty()) {
+                skippedRows++;
+                continue;
+            }
+            Optional<Dish> existingOpt = dishRepository.findByTitleIgnoreCase(imported.getName());
+            if (existingOpt.isPresent()) {
+                Dish existing = existingOpt.get();
+                applyDishUpdate(imported, existing, now);
+                updated++;
+            } else {
+                createDish(imported, now);
+                created++;
+            }
+        }
+        return new ImportStats(created, updated, skippedRows);
+    }
+
+    private void applyDishUpdate(ImportedDish imported, Dish existing, OffsetDateTime now) {
+        if (imported.getDescription() != null) {
+            existing.description = imported.getDescription();
+        }
+        existing.updatedAt = now;
+        replaceIngredients(existing, imported.getIngredients());
+        dishRepository.save(existing);
+    }
+
+    private void createDish(ImportedDish imported, OffsetDateTime now) {
+        Dish fresh = new Dish();
+        fresh.title = imported.getName();
+        fresh.description = imported.getDescription();
+        fresh.category = "Imported";
+        fresh.active = true;
+        fresh.createdAt = now;
+        fresh.updatedAt = now;
+        fresh.ingredients = new ArrayList<>();
+        for (ImportedIngredient ingredient : imported.getIngredients()) {
+            DishIngredient di = new DishIngredient();
+            di.dish = fresh;
+            di.name = ingredient.name();
+            di.qty = ingredient.qty();
+            di.unit = ingredient.unit();
+            di.baseProduct = ingredient.baseProduct();
+            di.excludeForClient = ingredient.excludeForClient();
+            fresh.ingredients.add(di);
+        }
+        dishRepository.save(fresh);
+    }
+
 
     private void replaceIngredients(Dish dish, List<ImportedIngredient> ingredients) {
         if (dish.ingredients == null) {
@@ -157,11 +189,11 @@ public class MenuImportService {
         for (ImportedIngredient imported : ingredients) {
             DishIngredient di = new DishIngredient();
             di.dish = dish;
-            di.name = imported.name;
-            di.qty = imported.qty;
-            di.unit = imported.unit;
-            di.baseProduct = imported.baseProduct;
-            di.excludeForClient = imported.excludeForClient;
+            di.name = imported.name();
+            di.qty = imported.qty();
+            di.unit = imported.unit();
+            di.baseProduct = imported.baseProduct();
+            di.excludeForClient = imported.excludeForClient();
             dish.ingredients.add(di);
         }
     }
@@ -235,15 +267,9 @@ public class MenuImportService {
         });
     }
 
-    private static final class ImportedDish {
-        final String name;
-        String description;
-        final List<ImportedIngredient> ingredients = new ArrayList<>();
+    private record ParsedImportResult(Map<String, ImportedDish> dishes, int skippedRows) { }
 
-        ImportedDish(String name) {
-            this.name = name;
-        }
-    }
+    private record ParsedRow(String dishName, String description, ImportedIngredient ingredient) { }
 
-    private record ImportedIngredient(String name, BigDecimal qty, Unit unit, boolean excludeForClient, BaseProduct baseProduct) { }
+    private record ImportStats(int created, int updated, int skipped) { }
 }

@@ -32,6 +32,8 @@
 * Names should be explicit: `UserController`, `UserService`, `UserRepository`, `UserDto`.
 * DTOs and immutable structures may use Lombok `@Value` or builders.
 * Avoid “magic” strings or numbers; extract constants into `private static final` fields.
+* When working with collections:
+  * Prefer `getFirst()` over `get(0)` for clarity and intent.
 * **Do not use `Stream.peek()`** in production code.
 * **Do not use `@SneakyThrows`** in production (allowed only in test classes).
 * Time handling:
@@ -49,11 +51,16 @@
   Spring test slices such as `@WebMvcTest` or `@DataJpaTest` are **forbidden**.
 * A shared base test class named **`AbstractApplicationTest`** must be used for **all integration tests**.
 
-    * It contains all required Spring Boot test annotations.
-    * It defines mocked beans using `@MockitoBean` (or other context-bound annotations).
-    * This ensures that **the Spring context is started only once** for the entire test suite.
-* Child integration test classes may use `@Autowired`; this does **not** trigger additional context initialization.
+  Updates to mocking rules:
+
+  * The Spring `@MockBean` annotation is **deprecated and must not be used**.
+  * All mocked beans must be defined using **`@MockitoBean`**.
+  * `@MockitoBean` **may only be used inside `AbstractApplicationTest`**.
+  * If a test requires additional mocks, they must be added to the abstract class — **never** in the child test.
+  * This ensures that **a single application context is shared across the entire test suite**.
+* Child integration test classes may use `@Autowired`; this does **not** trigger context reload.
 * **`@DirtiesContext` is prohibited**.
+* Avoid nested test classes whenever possible; prefer flat, explicit test structures.
 
 ### Unit Tests
 

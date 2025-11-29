@@ -1,7 +1,6 @@
 package com.chefmate.api;
 
 import com.chefmate.dto.DishDto;
-import com.chefmate.dto.DishIngredientDto;
 import com.chefmate.service.DishService;
 import com.chefmate.service.MenuImportService;
 import jakarta.validation.Valid;
@@ -59,4 +58,3 @@ public class MenuController {
         return ResponseEntity.ok(menuImportService.importMenu(file));
     }
 }
-

@@ -3,6 +3,7 @@ package com.chefmate.bot;
 import com.chefmate.service.BotOrderSessionService;
 import com.chefmate.service.CookBotService;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import org.telegram.telegrambots.client.okhttp.OkHttpTelegramClient;
 import org.telegram.telegrambots.longpolling.starter.SpringLongPollingBot;
@@ -13,6 +14,7 @@ import org.telegram.telegrambots.meta.api.objects.message.Message;
 import org.telegram.telegrambots.meta.generics.TelegramClient;
 
 @Component
+@Profile("default")
 public class ChefMateBot implements SpringLongPollingBot, LongPollingSingleThreadUpdateConsumer {
     private final BotOrderSessionService botOrderSessionService;
     private final CookBotService cookBotService;
