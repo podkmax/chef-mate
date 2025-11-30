@@ -1,22 +1,34 @@
 package com.chefmate.model;
 
-import jakarta.persistence.*;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.Table;
 import java.util.UUID;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
 
 @Entity
 @Table(name = "base_product")
+@Getter
+@Setter
+@ToString
+@EqualsAndHashCode(of = "id")
 public class BaseProduct {
     @Id
-    public UUID id;
+    private UUID id;
 
     @Column(nullable = false, unique = true)
-    public String name;
+    private String name;
 
     @Column(nullable = false)
-    public String unit;
+    private String unit;
 
     @Column(nullable = false)
-    public Boolean isFreezable = true;
+    private Boolean isFreezable = true;
 
     @PrePersist
     public void ensureId() {

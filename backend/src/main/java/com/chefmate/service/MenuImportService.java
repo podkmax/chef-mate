@@ -20,6 +20,7 @@ import org.apache.poi.ss.usermodel.Cell;
 import org.apache.poi.ss.usermodel.DataFormatter;
 import org.apache.poi.ss.usermodel.Row;
 import org.apache.poi.ss.usermodel.Sheet;
+import lombok.RequiredArgsConstructor;
 import org.apache.poi.ss.usermodel.Workbook;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.springframework.http.HttpStatus;
@@ -29,20 +30,12 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 
 @Service
+@RequiredArgsConstructor
 public class MenuImportService {
     private final DishRepository dishRepository;
     private final BaseProductRepository baseProductRepository;
     private final UnitService unitService;
     private final DataFormatter formatter = new DataFormatter();
-
-    public MenuImportService(
-            DishRepository dishRepository,
-            BaseProductRepository baseProductRepository,
-            UnitService unitService) {
-        this.dishRepository = dishRepository;
-        this.baseProductRepository = baseProductRepository;
-        this.unitService = unitService;
-    }
 
     public record MenuImportSummary(int created, int updated, int skipped) { }
 
@@ -135,10 +128,9 @@ public class MenuImportService {
                 skippedRows++;
                 continue;
             }
-            Optional<Dish> existingOpt = dishRepository.findByTitleIgnoreCase(imported.getName());
-            if (existingOpt.isPresent()) {
-                Dish existing = existingOpt.get();
-                applyDishUpdate(imported, existing, now);
+            Optional<Dish> existing = dishRepository.findByTitleIgnoreCase(imported.getName());
+            if (existing.isPresent()) {
+                applyDishUpdate(imported, existing.get(), now);
                 updated++;
             } else {
                 createDish(imported, now);
@@ -150,51 +142,51 @@ public class MenuImportService {
 
     private void applyDishUpdate(ImportedDish imported, Dish existing, OffsetDateTime now) {
         if (imported.getDescription() != null) {
-            existing.description = imported.getDescription();
+            existing.setDescription(imported.getDescription());
         }
-        existing.updatedAt = now;
+        existing.setUpdatedAt(now);
         replaceIngredients(existing, imported.getIngredients());
         dishRepository.save(existing);
     }
 
     private void createDish(ImportedDish imported, OffsetDateTime now) {
         Dish fresh = new Dish();
-        fresh.title = imported.getName();
-        fresh.description = imported.getDescription();
-        fresh.category = "Imported";
-        fresh.active = true;
-        fresh.createdAt = now;
-        fresh.updatedAt = now;
-        fresh.ingredients = new ArrayList<>();
+        fresh.setTitle(imported.getName());
+        fresh.setDescription(imported.getDescription());
+        fresh.setCategory("Imported");
+        fresh.setActive(true);
+        fresh.setCreatedAt(now);
+        fresh.setUpdatedAt(now);
+        fresh.setIngredients(new ArrayList<>());
         for (ImportedIngredient ingredient : imported.getIngredients()) {
             DishIngredient di = new DishIngredient();
-            di.dish = fresh;
-            di.name = ingredient.name();
-            di.qty = ingredient.qty();
-            di.unit = ingredient.unit();
-            di.baseProduct = ingredient.baseProduct();
-            di.excludeForClient = ingredient.excludeForClient();
-            fresh.ingredients.add(di);
+            di.setDish(fresh);
+            di.setName(ingredient.name());
+            di.setQty(ingredient.qty());
+            di.setUnit(ingredient.unit());
+            di.setBaseProduct(ingredient.baseProduct());
+            di.setExcludeForClient(ingredient.excludeForClient());
+            fresh.getIngredients().add(di);
         }
         dishRepository.save(fresh);
     }
 
 
     private void replaceIngredients(Dish dish, List<ImportedIngredient> ingredients) {
-        if (dish.ingredients == null) {
-            dish.ingredients = new ArrayList<>();
+        if (dish.getIngredients() == null) {
+            dish.setIngredients(new ArrayList<>());
         } else {
-            dish.ingredients.clear();
+            dish.getIngredients().clear();
         }
         for (ImportedIngredient imported : ingredients) {
             DishIngredient di = new DishIngredient();
-            di.dish = dish;
-            di.name = imported.name();
-            di.qty = imported.qty();
-            di.unit = imported.unit();
-            di.baseProduct = imported.baseProduct();
-            di.excludeForClient = imported.excludeForClient();
-            dish.ingredients.add(di);
+            di.setDish(dish);
+            di.setName(imported.name());
+            di.setQty(imported.qty());
+            di.setUnit(imported.unit());
+            di.setBaseProduct(imported.baseProduct());
+            di.setExcludeForClient(imported.excludeForClient());
+            dish.getIngredients().add(di);
         }
     }
 
@@ -260,9 +252,10 @@ public class MenuImportService {
     private BaseProduct resolveBaseProduct(String name, Unit unit) {
         return baseProductRepository.findByNameIgnoreCase(name).orElseGet(() -> {
             BaseProduct bp = new BaseProduct();
-            bp.name = name;
-            bp.unit = unit != null ? unit.shortName : unitService.getDefaultUnit().shortName;
-            bp.isFreezable = Boolean.TRUE;
+            bp.setName(name);
+            String unitShort = unit != null ? unit.getShortName() : unitService.getDefaultUnit().getShortName();
+            bp.setUnit(unitShort);
+            bp.setIsFreezable(Boolean.TRUE);
             return baseProductRepository.save(bp);
         });
     }

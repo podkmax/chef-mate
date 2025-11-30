@@ -2,8 +2,4 @@ package com.chefmate.dto;
 
 import java.util.UUID;
 
-public class UnitDto {
-    public UUID id;
-    public String name;
-    public String shortName;
-}
+public record UnitDto(UUID id, String name, String shortName) {}

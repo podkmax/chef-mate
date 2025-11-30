@@ -62,6 +62,22 @@
 * **`@DirtiesContext` is prohibited**.
 * Avoid nested test classes whenever possible; prefer flat, explicit test structures.
 
+### JSON Assertion Rules for Integration Tests
+
+When verifying JSON responses in integration tests, Codex must avoid
+deep `jsonPath` assertions. They produce unreadable tests and hide the
+actual domain structure.
+
+**Required approach:**
+
+1. Perform the request with `MockMvc` and retrieve the raw response body:
+   ```java
+   String response = mockMvc.perform(get("/api/…"))
+       .andExpect(status().isOk())
+       .andReturn()
+       .getResponse()
+       .getContentAsString(StandardCharsets.UTF_8);
+
 ### Unit Tests
 
 * Unit tests must **not** extend `AbstractApplicationTest`.

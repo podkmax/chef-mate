@@ -19,11 +19,12 @@ import com.chefmate.repo.OrderRepository;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.Collection;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -35,6 +36,9 @@ import org.springframework.web.server.ResponseStatusException;
 
 @Service
 public class OrderService {
+    private static final String ORDER_NOT_FOUND_MESSAGE = "Заказ не найден";
+    private static final String EMPTY_ORDER_ERROR = "Заказ должен содержать хотя бы одну позицию.";
+
     private final OrderRepository orderRepo;
     private final DishRepository dishRepo;
     private final CookNotificationService cookNotificationService;
@@ -68,10 +72,11 @@ public class OrderService {
         validateOrderPayload(dto);
         Order order = orderMapper.toEntity(dto);
         OffsetDateTime now = OffsetDateTime.now();
-        order.createdAt = now;
-        order.updatedAt = now;
-        order.status = OrderStatus.CREATED;
+        order.setCreatedAt(now);
+        order.setUpdatedAt(now);
+        order.setStatus(OrderStatus.CREATED);
         orderRepo.save(order);
+
         Map<Long, Dish> dishMap = loadDishMap(order);
         List<CookOrderDishDto> dishSummaries = buildDishSummaries(order, dishMap);
         List<IngredientAggregateDto> cookIngredients = aggregateIngredients(order, dishMap, false);
@@ -82,10 +87,9 @@ public class OrderService {
     @Transactional
     public OrderDto updateOrder(Long id, OrderDto dto) {
         validateOrderPayload(dto);
-        Order entity = orderRepo.findById(id).orElseThrow(() ->
-                new ResponseStatusException(HttpStatus.NOT_FOUND, "Заказ не найден"));
+        Order entity = getOrderOrThrow(id);
         orderMapper.updateEntityFromDto(dto, entity);
-        entity.updatedAt = OffsetDateTime.now();
+        entity.setUpdatedAt(OffsetDateTime.now());
         orderRepo.save(entity);
         return orderMapper.toDto(entity);
     }
@@ -107,144 +111,158 @@ public class OrderService {
 
     @Transactional(readOnly = true)
     public List<IngredientAggregateDto> aggregateIngredients(Long orderId, boolean forClient) {
-        Order order = orderRepo.findById(orderId).orElseThrow();
+        Order order = getOrderOrThrow(orderId);
         Map<Long, Dish> dishMap = loadDishMap(order);
         return aggregateIngredients(order, dishMap, forClient);
     }
 
     private Map<Long, Dish> loadDishMap(Order order) {
-        if (order == null || order.items == null || order.items.isEmpty()) {
+        List<OrderItem> items = order != null ? order.getItems() : null;
+        if (items == null || items.isEmpty()) {
             return Map.of();
         }
-        Set<Long> dishIds = order.items.stream()
-                .map(item -> item.dishId)
-                .filter(id -> id != null)
+        Set<Long> dishIds = items.stream()
+                .map(OrderItem::getDishId)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toSet());
         if (dishIds.isEmpty()) {
             return Map.of();
         }
         return dishRepo.findAllById(dishIds).stream()
-                .collect(Collectors.toMap(d -> d.id, Function.identity()));
+                .collect(Collectors.toMap(Dish::getId, Function.identity()));
     }
 
     private List<CookOrderDishDto> buildDishSummaries(Order order, Map<Long, Dish> dishMap) {
-        if (order.items == null || order.items.isEmpty()) {
+        List<OrderItem> items = order.getItems();
+        if (items == null || items.isEmpty()) {
             return List.of();
         }
-        List<CookOrderDishDto> result = new java.util.ArrayList<>();
-        for (OrderItem item : order.items) {
-            CookOrderDishDto summary = new CookOrderDishDto();
-            summary.dishId = item.dishId;
-            Dish dish = dishMap.get(item.dishId);
-            summary.name = dish != null ? dish.title : ("Блюдо #" + item.dishId);
-            summary.portions = item.portions != null ? item.portions : 1;
-            result.add(summary);
+        List<CookOrderDishDto> result = new ArrayList<>(items.size());
+        for (OrderItem item : items) {
+            Dish dish = dishMap.get(item.getDishId());
+            String name = dish != null ? dish.getTitle() : "Блюдо #" + item.getDishId();
+            int portions = item.getPortions() != null ? item.getPortions() : 1;
+            result.add(new CookOrderDishDto(item.getDishId(), name, portions));
         }
         return result;
     }
 
     private List<IngredientAggregateDto> aggregateIngredients(Order order, Map<Long, Dish> dishMap, boolean forClient) {
-        if (order == null || order.items == null || order.items.isEmpty()) {
+        List<OrderItem> items = order.getItems();
+        if (items == null || items.isEmpty()) {
             return List.of();
         }
         Map<Long, Dish> effectiveDishMap = dishMap != null ? dishMap : loadDishMap(order);
         List<IngredientAggregateDto> aggregates = forClient
-                ? aggregateIngredientsForClient(order, effectiveDishMap)
-                : aggregateIngredientsForCook(order, effectiveDishMap);
-        if (forClient) {
-            applyStockAdjustments(order, aggregates, true);
-        }
-        return aggregates;
+                ? aggregateIngredientsForClient(items, effectiveDishMap)
+                : aggregateIngredientsForCook(items, effectiveDishMap);
+        return forClient ? applyStockAdjustments(order, aggregates, true) : aggregates;
     }
 
-    private List<IngredientAggregateDto> aggregateIngredientsForClient(Order order, Map<Long, Dish> dishMap) {
+    private List<IngredientAggregateDto> aggregateIngredientsForClient(List<OrderItem> items, Map<Long, Dish> dishMap) {
         Map<String, IngredientAggregateDto> aggr = new LinkedHashMap<>();
-        for (OrderItem item : order.items) {
-            Dish dish = dishMap.get(item.dishId);
-            if (dish == null || dish.ingredients == null) {
+        for (OrderItem item : items) {
+            Dish dish = dishMap.get(item.getDishId());
+            if (dish == null || dish.getIngredients() == null) {
                 continue;
             }
-            for (DishIngredient ingredient : dish.ingredients) {
-                if (Boolean.TRUE.equals(ingredient.excludeForClient)) {
+            for (DishIngredient ingredient : dish.getIngredients()) {
+                if (Boolean.TRUE.equals(ingredient.getExcludeForClient())) {
                     continue;
                 }
-                BaseProduct baseProduct = ingredient.baseProduct != null
-                        ? ingredient.baseProduct
-                        : baseProductRepository.findByNameIgnoreCase(ingredient.name).orElse(null);
+                BaseProduct baseProduct = ingredient.getBaseProduct() != null
+                        ? ingredient.getBaseProduct()
+                        : baseProductRepository.findByNameIgnoreCase(ingredient.getName()).orElse(null);
                 if (baseProduct == null) {
                     continue;
                 }
-                Unit unit = ingredient.unit != null
-                        ? ingredient.unit
-                        : unitService.resolveUnitOrDefault(baseProduct.unit);
+                Unit unit = ingredient.getUnit() != null
+                        ? ingredient.getUnit()
+                        : unitService.resolveUnitOrDefault(baseProduct.getUnit());
                 String unitShort = resolveUnitShortName(unit, baseProduct);
                 BigDecimal quantity = calculateQuantity(ingredient, item);
-                String displayName = baseProduct.name != null ? baseProduct.name : ingredient.name;
-                String key = normalizeKey(displayName) + "|" + (unit != null ? unit.id : "default");
+                String displayName = baseProduct.getName() != null ? baseProduct.getName() : ingredient.getName();
+                String key = normalizeKey(displayName) + "|" + (unit != null ? unit.getId() : "default");
                 aggr.compute(key, (mapKey, current) -> {
                     if (current == null) {
-                        IngredientAggregateDto dto = new IngredientAggregateDto();
-                        dto.name = displayName;
-                        dto.totalQty = quantity;
-                        dto.requiredQty = quantity;
-                        dto.unitId = unit != null ? unit.id : null;
-                        dto.unit = unit != null ? unitService.toDto(unit) : null;
-                        dto.unitShortName = unitShort;
-                        dto.baseProductId = baseProduct.id;
-                        return dto;
+                        return new IngredientAggregateDto(
+                                displayName,
+                                quantity,
+                                unit != null ? unit.getId() : null,
+                                unit != null ? unitService.toDto(unit) : null,
+                                unitShort,
+                                null,
+                                quantity,
+                                baseProduct.getId());
                     }
-                    current.totalQty = current.totalQty.add(quantity);
-                    current.requiredQty = current.totalQty;
-                    if (current.unitShortName == null || current.unitShortName.isBlank()) {
-                        current.unitShortName = unitShort;
-                    }
-                    return current;
+                    BigDecimal updatedTotal = orZero(current.totalQty()).add(quantity);
+                    BigDecimal updatedRequired = updatedTotal;
+                    String updatedShort =
+                            (current.unitShortName() == null || current.unitShortName().isBlank()) ? unitShort : current.unitShortName();
+                    return new IngredientAggregateDto(
+                            current.name(),
+                            updatedTotal,
+                            current.unitId(),
+                            current.unit(),
+                            updatedShort,
+                            current.stockQty(),
+                            updatedRequired,
+                            current.baseProductId());
                 });
             }
         }
-        return new java.util.ArrayList<>(aggr.values());
+        return new ArrayList<>(aggr.values());
     }
 
-    private List<IngredientAggregateDto> aggregateIngredientsForCook(Order order, Map<Long, Dish> dishMap) {
+    private List<IngredientAggregateDto> aggregateIngredientsForCook(List<OrderItem> items, Map<Long, Dish> dishMap) {
         Map<String, IngredientAggregateDto> aggr = new LinkedHashMap<>();
-        for (OrderItem item : order.items) {
-            Dish dish = dishMap.get(item.dishId);
-            if (dish == null || dish.ingredients == null) {
+        for (OrderItem item : items) {
+            Dish dish = dishMap.get(item.getDishId());
+            if (dish == null || dish.getIngredients() == null) {
                 continue;
             }
-            for (DishIngredient ingredient : dish.ingredients) {
-                Unit unit = ingredient.unit != null ? ingredient.unit : unitService.getDefaultUnit();
-                String unitShort = resolveUnitShortName(unit, ingredient.baseProduct);
+            for (DishIngredient ingredient : dish.getIngredients()) {
+                Unit unit = ingredient.getUnit() != null ? ingredient.getUnit() : unitService.getDefaultUnit();
+                BaseProduct baseProduct = ingredient.getBaseProduct();
+                String unitShort = resolveUnitShortName(unit, baseProduct);
                 BigDecimal quantity = calculateQuantity(ingredient, item);
-                String name = ingredient.name != null && !ingredient.name.isBlank()
-                        ? ingredient.name
-                        : (ingredient.baseProduct != null ? ingredient.baseProduct.name : "Ингредиент");
-                String key = normalizeKey(name) + "|" + (unit != null ? unit.id : "default");
+                String name = ingredient.getName() != null && !ingredient.getName().isBlank()
+                        ? ingredient.getName()
+                        : (baseProduct != null ? baseProduct.getName() : "Ингредиент");
+                String key = normalizeKey(name) + "|" + (unit != null ? unit.getId() : "default");
                 aggr.compute(key, (mapKey, current) -> {
                     if (current == null) {
-                        IngredientAggregateDto dto = new IngredientAggregateDto();
-                        dto.name = name;
-                        dto.totalQty = quantity;
-                        dto.unitId = unit != null ? unit.id : null;
-                        dto.unit = unit != null ? unitService.toDto(unit) : null;
-                        dto.unitShortName = unitShort;
-                        dto.baseProductId = ingredient.baseProduct != null ? ingredient.baseProduct.id : null;
-                        return dto;
+                        return new IngredientAggregateDto(
+                                name,
+                                quantity,
+                                unit != null ? unit.getId() : null,
+                                unit != null ? unitService.toDto(unit) : null,
+                                unitShort,
+                                null,
+                                null,
+                                baseProduct != null ? baseProduct.getId() : null);
                     }
-                    current.totalQty = current.totalQty.add(quantity);
-                    if (current.unitShortName == null || current.unitShortName.isBlank()) {
-                        current.unitShortName = unitShort;
-                    }
-                    return current;
+                    BigDecimal updatedTotal = orZero(current.totalQty()).add(quantity);
+                    String updatedShort =
+                            (current.unitShortName() == null || current.unitShortName().isBlank()) ? unitShort : current.unitShortName();
+                    return new IngredientAggregateDto(
+                            current.name(),
+                            updatedTotal,
+                            current.unitId(),
+                            current.unit(),
+                            updatedShort,
+                            current.stockQty(),
+                            current.requiredQty(),
+                            current.baseProductId());
                 });
             }
         }
-        return new java.util.ArrayList<>(aggr.values());
+        return new ArrayList<>(aggr.values());
     }
 
     private BigDecimal calculateQuantity(DishIngredient ingredient, OrderItem item) {
-        BigDecimal baseQty = ingredient.qty != null ? ingredient.qty : BigDecimal.ZERO;
-        int portions = item.portions != null ? item.portions : 1;
+        BigDecimal baseQty = ingredient.getQty() != null ? ingredient.getQty() : BigDecimal.ZERO;
+        int portions = item.getPortions() != null ? item.getPortions() : 1;
         return baseQty.multiply(BigDecimal.valueOf(portions));
     }
 
@@ -256,55 +274,73 @@ public class OrderService {
     }
 
     private String resolveUnitShortName(Unit unit, BaseProduct baseProduct) {
-        if (unit != null && unit.shortName != null && !unit.shortName.isBlank()) {
-            return unit.shortName;
+        if (unit != null && unit.getShortName() != null && !unit.getShortName().isBlank()) {
+            return unit.getShortName();
         }
-        if (baseProduct != null && baseProduct.unit != null && !baseProduct.unit.isBlank()) {
-            return unitService.normalizeShortName(baseProduct.unit);
+        if (baseProduct != null && baseProduct.getUnit() != null && !baseProduct.getUnit().isBlank()) {
+            return unitService.normalizeShortName(baseProduct.getUnit());
         }
         return null;
     }
 
-    private void applyStockAdjustments(Order order, Collection<IngredientAggregateDto> items, boolean reduceByStock) {
-        if (order.userId == null || items.isEmpty()) {
-            return;
+    private List<IngredientAggregateDto> applyStockAdjustments(
+            Order order,
+            List<IngredientAggregateDto> items,
+            boolean reduceByStock) {
+        if (order.getUserId() == null || items.isEmpty()) {
+            return items;
         }
-        List<ClientStock> stockItems = clientStockRepository.findByUserId(order.userId);
+        List<ClientStock> stockItems = clientStockRepository.findByUserId(order.getUserId());
+        if (stockItems == null || stockItems.isEmpty()) {
+            return items;
+        }
         Map<UUID, ClientStock> stockMap = stockItems.stream()
-                .collect(Collectors.toMap(cs -> cs.baseProduct.id, cs -> cs, (a, b) -> a, LinkedHashMap::new));
-        for (IngredientAggregateDto dto : items) {
-            UUID baseProductId = dto.baseProductId != null ? dto.baseProductId : resolveBaseProductId(dto.name);
-            if (baseProductId == null) {
-                dto.stockQty = BigDecimal.ZERO;
-                dto.requiredQty = dto.totalQty;
-                continue;
+                .filter(cs -> cs.getBaseProduct() != null && cs.getBaseProduct().getId() != null)
+                .collect(Collectors.toMap(
+                        cs -> cs.getBaseProduct().getId(),
+                        Function.identity(),
+                        (a, b) -> a,
+                        LinkedHashMap::new));
+        List<IngredientAggregateDto> adjusted = new ArrayList<>(items.size());
+        for (IngredientAggregateDto item : items) {
+            UUID baseProductId = item.baseProductId() != null ? item.baseProductId() : resolveBaseProductId(item.name());
+            BigDecimal total = orZero(item.totalQty());
+            BigDecimal stockQty = BigDecimal.ZERO;
+            BigDecimal requiredQty = total;
+            if (baseProductId != null) {
+                ClientStock stock = stockMap.get(baseProductId);
+                if (stock != null) {
+                    stockQty = orZero(stock.getQty());
+                    if (reduceByStock) {
+                        requiredQty = total.subtract(stockQty).max(BigDecimal.ZERO);
+                    }
+                }
             }
-            ClientStock stock = stockMap.get(baseProductId);
-            if (stock == null) {
-                dto.stockQty = BigDecimal.ZERO;
-                dto.requiredQty = dto.totalQty;
-                continue;
-            }
-            BigDecimal available = stock.qty != null ? stock.qty : BigDecimal.ZERO;
-            dto.stockQty = available;
-            if (reduceByStock) {
-                BigDecimal required = dto.totalQty != null ? dto.totalQty.subtract(available) : BigDecimal.ZERO;
-                dto.requiredQty = required.max(BigDecimal.ZERO);
-            } else {
-                dto.requiredQty = dto.totalQty;
-            }
+            adjusted.add(new IngredientAggregateDto(
+                    item.name(),
+                    total,
+                    item.unitId(),
+                    item.unit(),
+                    item.unitShortName(),
+                    stockQty,
+                    requiredQty,
+                    baseProductId));
         }
+        return adjusted;
+    }
+
+    private BigDecimal orZero(BigDecimal value) {
+        return value != null ? value : BigDecimal.ZERO;
     }
 
     @Transactional
     public OrderDto confirmOrder(Long id) {
-        Order order = orderRepo.findById(id).orElseThrow(() ->
-                new ResponseStatusException(HttpStatus.NOT_FOUND, "Заказ не найден"));
-        if (order.status == OrderStatus.CONFIRMED) {
+        Order order = getOrderOrThrow(id);
+        if (order.getStatus() == OrderStatus.CONFIRMED) {
             return orderMapper.toDto(order);
         }
-        order.status = OrderStatus.CONFIRMED;
-        order.updatedAt = OffsetDateTime.now();
+        order.setStatus(OrderStatus.CONFIRMED);
+        order.setUpdatedAt(OffsetDateTime.now());
         orderRepo.save(order);
         Map<Long, Dish> dishMap = loadDishMap(order);
         List<IngredientAggregateDto> ingredients = aggregateIngredients(order, dishMap, true);
@@ -314,14 +350,18 @@ public class OrderService {
     }
 
     private void adjustClientStock(Order order, List<IngredientAggregateDto> ingredients) {
-        if (order.userId == null) {
+        if (order.getUserId() == null || ingredients.isEmpty()) {
             return;
         }
-        List<ClientStock> stockItems = clientStockRepository.findByUserId(order.userId);
+        List<ClientStock> stockItems = clientStockRepository.findByUserId(order.getUserId());
+        if (stockItems == null || stockItems.isEmpty()) {
+            return;
+        }
         Map<UUID, ClientStock> stockMap = stockItems.stream()
-                .collect(Collectors.toMap(cs -> cs.baseProduct.id, cs -> cs));
-        for (IngredientAggregateDto dto : ingredients) {
-            UUID baseProductId = dto.baseProductId != null ? dto.baseProductId : resolveBaseProductId(dto.name);
+                .filter(cs -> cs.getBaseProduct() != null && cs.getBaseProduct().getId() != null)
+                .collect(Collectors.toMap(cs -> cs.getBaseProduct().getId(), Function.identity()));
+        for (IngredientAggregateDto item : ingredients) {
+            UUID baseProductId = item.baseProductId() != null ? item.baseProductId() : resolveBaseProductId(item.name());
             if (baseProductId == null) {
                 continue;
             }
@@ -329,10 +369,10 @@ public class OrderService {
             if (stock == null) {
                 continue;
             }
-            BigDecimal current = stock.qty != null ? stock.qty : BigDecimal.ZERO;
-            BigDecimal required = dto.totalQty != null ? dto.totalQty : BigDecimal.ZERO;
+            BigDecimal current = orZero(stock.getQty());
+            BigDecimal required = orZero(item.totalQty());
             BigDecimal newQty = current.subtract(required);
-            stock.qty = newQty.max(BigDecimal.ZERO);
+            stock.setQty(newQty.max(BigDecimal.ZERO));
             clientStockRepository.save(stock);
         }
     }
@@ -341,22 +381,28 @@ public class OrderService {
         if (name == null) {
             return null;
         }
-        return baseProductRepository.findByNameIgnoreCase(name).map(bp -> bp.id).orElse(null);
+        return baseProductRepository.findByNameIgnoreCase(name)
+                .map(BaseProduct::getId)
+                .orElse(null);
     }
 
     @Transactional
     public OrderDto cancelOrder(Long id) {
-        Order order = orderRepo.findById(id).orElseThrow(() ->
-                new ResponseStatusException(HttpStatus.NOT_FOUND, "Заказ не найден"));
-        order.status = OrderStatus.CANCELLED;
-        order.updatedAt = OffsetDateTime.now();
+        Order order = getOrderOrThrow(id);
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setUpdatedAt(OffsetDateTime.now());
         orderRepo.save(order);
         return orderMapper.toDto(order);
     }
 
     private void validateOrderPayload(OrderDto dto) {
-        if (dto == null || dto.items == null || dto.items.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Заказ должен содержать хотя бы одну позицию.");
+        if (dto == null || dto.items() == null || dto.items().isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, EMPTY_ORDER_ERROR);
         }
+    }
+
+    private Order getOrderOrThrow(Long id) {
+        return orderRepo.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, ORDER_NOT_FOUND_MESSAGE));
     }
 }

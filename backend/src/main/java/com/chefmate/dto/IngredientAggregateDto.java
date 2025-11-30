@@ -3,13 +3,13 @@ package com.chefmate.dto;
 import java.math.BigDecimal;
 import java.util.UUID;
 
-public class IngredientAggregateDto {
-    public String name;
-    public BigDecimal totalQty;
-    public UUID unitId;
-    public UnitDto unit;
-    public String unitShortName;
-    public BigDecimal stockQty;
-    public BigDecimal requiredQty;
-    public UUID baseProductId;
+public record IngredientAggregateDto(
+        String name,
+        BigDecimal totalQty,
+        UUID unitId,
+        UnitDto unit,
+        String unitShortName,
+        BigDecimal stockQty,
+        BigDecimal requiredQty,
+        UUID baseProductId) {
 }

@@ -6,17 +6,12 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDate;
 import java.util.List;
 
-public class OrderDto {
-    public Long id;
-    @NotNull
-    public Long userId;
-    @NotNull
-    public LocalDate targetDate;
-    public String status;
-    public String comment;
-    @NotEmpty
-    @Valid
-    public List<OrderItemDto> items;
+public record OrderDto(
+        Long id,
+        @NotNull Long userId,
+        @NotNull LocalDate targetDate,
+        String status,
+        String comment,
+        @NotEmpty @Valid List<OrderItemDto> items) {
 }
-
 

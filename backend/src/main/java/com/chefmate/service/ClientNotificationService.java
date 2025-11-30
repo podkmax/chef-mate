@@ -26,21 +26,21 @@ public class ClientNotificationService {
     }
 
     public void notifyOrderConfirmed(Order order, List<IngredientAggregateDto> ingredients) {
-        if (order == null || order.userId == null) {
+        if (order == null || order.getUserId() == null) {
             return;
         }
-        Optional<User> userOpt = userRepository.findById(order.userId);
+        Optional<User> userOpt = userRepository.findById(order.getUserId());
         if (userOpt.isEmpty()) {
             return;
         }
         User user = userOpt.get();
-        if (user.telegramId == null || user.telegramId <= 0) {
+        if (user.getTelegramId() == null || user.getTelegramId() <= 0) {
             return;
         }
         StringBuilder sb = new StringBuilder();
-        String datePart = order.targetDate != null ? DATE_FORMAT.format(order.targetDate) : "не указана";
+        String datePart = order.getTargetDate() != null ? DATE_FORMAT.format(order.getTargetDate()) : "не указана";
         sb.append("🛒 Список продуктов для заказа №")
-                .append(order.id != null ? order.id : "?")
+                .append(order.getId() != null ? order.getId() : "?")
                 .append(" на ")
                 .append(datePart)
                 .append("\n\n");
@@ -52,12 +52,12 @@ public class ClientNotificationService {
                 if (isZeroOrNull(required)) {
                     continue;
                 }
-                String name = ingr.name != null ? ingr.name : "Ингредиент";
+                String name = ingr.name() != null ? ingr.name() : "Ингредиент";
                 String qty = required.stripTrailingZeros().toPlainString();
-                String unitShort = ingr.unitShortName != null && !ingr.unitShortName.isBlank()
-                        ? ingr.unitShortName
-                        : (ingr.unit != null && ingr.unit.shortName != null && !ingr.unit.shortName.isBlank()
-                        ? ingr.unit.shortName
+                String unitShort = ingr.unitShortName() != null && !ingr.unitShortName().isBlank()
+                        ? ingr.unitShortName()
+                        : (ingr.unit() != null && ingr.unit().shortName() != null && !ingr.unit().shortName().isBlank()
+                        ? ingr.unit().shortName()
                         : "");
                 String unit = unitShort.isBlank() ? "" : " " + unitShort;
                 sb.append("— ").append(name).append(" — ").append(qty).append(unit).append("\n");
@@ -65,7 +65,7 @@ public class ClientNotificationService {
         }
         sb.append("\n✅ Хорошего дня!");
         SendMessage message = SendMessage.builder()
-                .chatId(user.telegramId.toString())
+                .chatId(user.getTelegramId().toString())
                 .text(sb.toString().trim())
                 .build();
         try {
@@ -80,9 +80,9 @@ public class ClientNotificationService {
     }
 
     private BigDecimal requiredQty(IngredientAggregateDto dto) {
-        if (dto.requiredQty != null) {
-            return dto.requiredQty;
+        if (dto.requiredQty() != null) {
+            return dto.requiredQty();
         }
-        return dto.totalQty;
+        return dto.totalQty();
     }
 }

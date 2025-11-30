@@ -72,7 +72,7 @@ public class UnitService {
         return unitRepository.findAll().stream()
                 .map(this::toDto)
                 .sorted(Comparator.comparing(
-                        dto -> dto.name != null ? dto.name : dto.shortName,
+                        dto -> dto.name() != null ? dto.name() : dto.shortName(),
                         Comparator.nullsLast(String.CASE_INSENSITIVE_ORDER)))
                 .collect(Collectors.toList());
     }
@@ -130,11 +130,7 @@ public class UnitService {
         if (unit == null) {
             return null;
         }
-        UnitDto dto = new UnitDto();
-        dto.id = unit.id;
-        dto.name = unit.name;
-        dto.shortName = unit.shortName;
-        return dto;
+        return new UnitDto(unit.getId(), unit.getName(), unit.getShortName());
     }
 
     private Unit findByShortName(String shortName) {

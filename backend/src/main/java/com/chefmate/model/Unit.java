@@ -6,18 +6,26 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.Table;
 import java.util.UUID;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.Setter;
+import lombok.ToString;
 
 @Entity
 @Table(name = "unit")
+@Getter
+@Setter
+@ToString
+@EqualsAndHashCode(of = "id")
 public class Unit {
     @Id
-    public UUID id;
+    private UUID id;
 
     @Column(nullable = false)
-    public String name;
+    private String name;
 
     @Column(name = "short_name", nullable = false)
-    public String shortName;
+    private String shortName;
 
     @PrePersist
     public void ensureId() {

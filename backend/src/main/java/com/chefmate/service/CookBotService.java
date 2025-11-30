@@ -1,22 +1,25 @@
 package com.chefmate.service;
 
 import com.chefmate.bot.TelegramKeyboards;
+import com.chefmate.config.BotProperties;
 import com.chefmate.dto.BaseProductDto;
 import com.chefmate.dto.ClientStockDto;
 import com.chefmate.dto.IngredientAggregateDto;
 import com.chefmate.dto.OrderDto;
 import com.chefmate.model.User;
 import com.chefmate.repo.UserRepository;
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
-import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import org.springframework.beans.factory.annotation.Value;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
@@ -24,30 +27,25 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 
 @Service
+@RequiredArgsConstructor
+@Slf4j
 public class CookBotService {
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+
     private final OrderService orderService;
     private final ClientStockService clientStockService;
     private final BaseProductService baseProductService;
     private final UserRepository userRepository;
-    private final long cookTelegramId;
-    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy");
+    private final BotProperties botProperties;
     private final Map<Long, StockConversation> stockStates = new ConcurrentHashMap<>();
 
-    public CookBotService(
-            OrderService orderService,
-            ClientStockService clientStockService,
-            BaseProductService baseProductService,
-            UserRepository userRepository,
-            @Value("${telegram.bot.cook-id:0}") long cookTelegramId) {
-        this.orderService = orderService;
-        this.clientStockService = clientStockService;
-        this.baseProductService = baseProductService;
-        this.userRepository = userRepository;
-        this.cookTelegramId = cookTelegramId;
-    }
-
     public boolean isCook(Long telegramId) {
-        return telegramId != null && telegramId == cookTelegramId && cookTelegramId > 0;
+        long cookId = botProperties.getCookId();
+        boolean isCook = cookId > 0 && Objects.equals(telegramId, cookId);
+        if (!isCook) {
+            log.debug("Telegram id {} is not configured cook", telegramId);
+        }
+        return isCook;
     }
 
     public boolean handleMessage(Long telegramId, Long chatId, String text, BotOrderSessionService.SendReply reply) {
@@ -135,21 +133,26 @@ public class CookBotService {
             reply.send(simpleMessage(chatId, "Количество должно быть неотрицательным."));
             return;
         }
-        ClientStockDto request = new ClientStockDto();
-        request.baseProductId = state.baseProductId;
-        request.qty = qty;
+        UUID stockId = null;
         if (state.action == StockAction.EDIT && state.stockId != null) {
-            request.id = state.stockId;
+            stockId = state.stockId;
         } else {
             ClientStockDto existing = clientStockService.findStock(state.userId, state.baseProductId);
             if (existing != null) {
-                request.id = existing.id;
+                stockId = existing.id();
             }
         }
+        ClientStockDto request = new ClientStockDto(
+                stockId,
+                state.baseProductId,
+                qty,
+                null,
+                null,
+                null);
         ClientStockDto saved = clientStockService.saveStock(state.userId, request);
         state.awaitingQuantity = false;
         state.baseProductId = null;
-        state.stockId = saved.id;
+        state.stockId = saved.id();
         reply.send(simpleMessage(chatId, "Склад обновлён."));
         showStockList(chatId, state.userId, reply);
         showClientActions(chatId, state.userId, reply);
@@ -162,10 +165,10 @@ public class CookBotService {
             return;
         }
         var rows = orders.stream()
-                .sorted((a, b) -> Long.compare(a.id != null ? a.id : 0, b.id != null ? b.id : 0))
+                .sorted((a, b) -> Long.compare(a.id() != null ? a.id() : 0, b.id() != null ? b.id() : 0))
                 .map(o -> List.<InlineKeyboardButton>of(InlineKeyboardButton.builder()
-                        .text("Заказ №" + o.id + statusSuffix(o.status))
-                        .callbackData("cook:view:" + o.id)
+                        .text("Заказ №" + o.id() + statusSuffix(o.status()))
+                        .callbackData("cook:view:" + o.id())
                         .build()))
                 .toList();
         InlineKeyboardMarkup markup = TelegramKeyboards.inline(rows);
@@ -185,12 +188,12 @@ public class CookBotService {
         List<IngredientAggregateDto> ingredients = orderService.aggregateIngredients(orderId, false);
         StringBuilder sb = new StringBuilder();
         sb.append("📦 Заказ №").append(orderId);
-        if (dto.targetDate != null) {
-            sb.append(" на ").append(DATE_FORMAT.format(dto.targetDate));
+        if (dto.targetDate() != null) {
+            sb.append(" на ").append(DATE_FORMAT.format(dto.targetDate()));
         }
-        sb.append("\nСтатус: ").append(dto.status != null ? dto.status : "—");
-        if (dto.comment != null && !dto.comment.isBlank()) {
-            sb.append("\nКомментарий: ").append(dto.comment);
+        sb.append("\nСтатус: ").append(dto.status() != null ? dto.status() : "—");
+        if (dto.comment() != null && !dto.comment().isBlank()) {
+            sb.append("\nКомментарий: ").append(dto.comment());
         }
         sb.append("\n\nИнгредиенты:\n");
         if (ingredients.isEmpty()) {
@@ -242,18 +245,18 @@ public class CookBotService {
 
     private InlineKeyboardMarkup orderActionsKeyboard(OrderDto dto) {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
-        boolean canConfirm = dto.status == null || "CREATED".equals(dto.status);
-        boolean canCancel = !"CANCELLED".equals(dto.status);
+        boolean canConfirm = dto.status() == null || "CREATED".equals(dto.status());
+        boolean canCancel = !"CANCELLED".equals(dto.status());
         if (canConfirm) {
             rows.add(List.of(InlineKeyboardButton.builder()
                     .text("Подтвердить")
-                    .callbackData("cook:confirm:" + dto.id)
+                    .callbackData("cook:confirm:" + dto.id())
                     .build()));
         }
         if (canCancel) {
             rows.add(List.of(InlineKeyboardButton.builder()
                     .text("Отменить")
-                    .callbackData("cook:cancel:" + dto.id)
+                    .callbackData("cook:cancel:" + dto.id())
                     .build()));
         }
         rows.add(List.of(InlineKeyboardButton.builder()
@@ -264,11 +267,11 @@ public class CookBotService {
     }
 
     private static String formatIngredient(IngredientAggregateDto ingr) {
-        String qty = ingr.totalQty != null ? ingr.totalQty.stripTrailingZeros().toPlainString() : "?";
-        String unit = ingr.unitShortName != null && !ingr.unitShortName.isBlank()
-                ? ingr.unitShortName
-                : (ingr.unit != null && ingr.unit.shortName != null ? ingr.unit.shortName : "");
-        return ingr.name + " — " + qty + (unit.isBlank() ? "" : " " + unit);
+        String qty = ingr.totalQty() != null ? ingr.totalQty().stripTrailingZeros().toPlainString() : "?";
+        String unit = ingr.unitShortName() != null && !ingr.unitShortName().isBlank()
+                ? ingr.unitShortName()
+                : (ingr.unit() != null && ingr.unit().shortName() != null ? ingr.unit().shortName() : "");
+        return ingr.name() + " — " + qty + (unit.isBlank() ? "" : " " + unit);
     }
 
     private static String statusSuffix(String status) {
@@ -299,8 +302,8 @@ public class CookBotService {
 
     private void showClientSelection(Long chatId, BotOrderSessionService.SendReply reply) {
         List<User> clients = userRepository.findAll().stream()
-                .filter(u -> u.role != null && u.role.equalsIgnoreCase("CLIENT"))
-                .sorted(Comparator.comparing(u -> u.name != null ? u.name : ""))
+                .filter(u -> u.getRole() != null && u.getRole().equalsIgnoreCase("CLIENT"))
+                .sorted(Comparator.comparing(u -> u.getName() != null ? u.getName() : ""))
                 .toList();
         if (clients.isEmpty()) {
             reply.send(simpleMessage(chatId, "Клиенты не найдены."));
@@ -308,10 +311,10 @@ public class CookBotService {
         }
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         for (User user : clients) {
-            String label = (user.name != null ? user.name : "Client") + " #" + user.id;
+            String label = (user.getName() != null ? user.getName() : "Client") + " #" + user.getId();
             rows.add(List.of(InlineKeyboardButton.builder()
                     .text(label)
-                    .callbackData("cook:stock:client:" + user.id)
+                    .callbackData("cook:stock:client:" + user.getId())
                     .build()));
         }
         reply.send(SendMessage.builder()
@@ -351,10 +354,10 @@ public class CookBotService {
         } else {
             for (ClientStockDto item : stock) {
                 sb.append("— ")
-                        .append(item.baseProductName != null ? item.baseProductName : item.baseProductId)
+                        .append(item.baseProductName() != null ? item.baseProductName() : item.baseProductId())
                         .append(" — ")
-                        .append(item.qty != null ? item.qty.stripTrailingZeros().toPlainString() : "0")
-                        .append(item.unit != null ? " " + item.unit : "")
+                        .append(item.qty() != null ? item.qty().stripTrailingZeros().toPlainString() : "0")
+                        .append(item.unit() != null ? " " + item.unit() : "")
                         .append("\n");
             }
         }
@@ -413,11 +416,11 @@ public class CookBotService {
             conv.baseProductId = baseProductId;
             conv.action = StockAction.ADD;
             ClientStockDto existing = clientStockService.findStock(userId, baseProductId);
-            conv.stockId = existing != null ? existing.id : null;
+            conv.stockId = existing != null ? existing.id() : null;
             conv.awaitingQuantity = true;
             BaseProductDto bp = baseProductService.findById(baseProductId);
-            reply.send(simpleMessage(chatId, "Введите количество для \"" + (bp != null ? bp.name : baseProductId)
-                    + "\" (в " + (bp != null ? bp.unit : "") + "):"));
+            reply.send(simpleMessage(chatId, "Введите количество для \"" + (bp != null ? bp.name() : baseProductId)
+                    + "\" (в " + (bp != null ? bp.unit() : "") + "):"));
             return;
         }
         if ("editbp".equals(action) && parts.length >= 6) {
@@ -435,8 +438,8 @@ public class CookBotService {
             conv.action = StockAction.EDIT;
             conv.awaitingQuantity = true;
             BaseProductDto bp = baseProductService.findById(baseProductId);
-            reply.send(simpleMessage(chatId, "Введите новое количество для \"" + (bp != null ? bp.name : baseProductId)
-                    + "\" (в " + (bp != null ? bp.unit : "") + "):"));
+            reply.send(simpleMessage(chatId, "Введите новое количество для \"" + (bp != null ? bp.name() : baseProductId)
+                    + "\" (в " + (bp != null ? bp.unit() : "") + "):"));
             return;
         }
         if ("removeconfirm".equals(action) && parts.length >= 5) {
@@ -462,8 +465,8 @@ public class CookBotService {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         for (BaseProductDto product : products) {
             rows.add(List.of(InlineKeyboardButton.builder()
-                    .text(product.name + " (" + product.unit + ")")
-                    .callbackData("cook:stock:addbp:" + userId + ":" + product.id)
+                    .text(product.name() + " (" + product.unit() + ")")
+                    .callbackData("cook:stock:addbp:" + userId + ":" + product.id())
                     .build()));
         }
         stockStates.computeIfAbsent(chatId, k -> new StockConversation()).action = action;
@@ -483,9 +486,9 @@ public class CookBotService {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         for (ClientStockDto item : stock) {
             rows.add(List.of(InlineKeyboardButton.builder()
-                    .text((item.baseProductName != null ? item.baseProductName : item.baseProductId) + " (" +
-                            item.qty.stripTrailingZeros().toPlainString() + " " + item.unit + ")")
-                    .callbackData("cook:stock:editbp:" + userId + ":" + item.id + ":" + item.baseProductId)
+                    .text((item.baseProductName() != null ? item.baseProductName() : item.baseProductId()) + " (" +
+                            item.qty().stripTrailingZeros().toPlainString() + " " + item.unit() + ")")
+                    .callbackData("cook:stock:editbp:" + userId + ":" + item.id() + ":" + item.baseProductId())
                     .build()));
         }
         stockStates.computeIfAbsent(chatId, k -> new StockConversation()).action = action;
@@ -505,8 +508,8 @@ public class CookBotService {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         for (ClientStockDto item : stock) {
             rows.add(List.of(InlineKeyboardButton.builder()
-                    .text("Удалить " + (item.baseProductName != null ? item.baseProductName : item.baseProductId))
-                    .callbackData("cook:stock:removeconfirm:" + userId + ":" + item.id)
+                    .text("Удалить " + (item.baseProductName() != null ? item.baseProductName() : item.baseProductId()))
+                    .callbackData("cook:stock:removeconfirm:" + userId + ":" + item.id())
                     .build()));
         }
         reply.send(SendMessage.builder()

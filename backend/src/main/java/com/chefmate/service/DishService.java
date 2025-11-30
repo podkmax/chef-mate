@@ -2,6 +2,7 @@ package com.chefmate.service;
 
 import com.chefmate.dto.DishDto;
 import com.chefmate.dto.DishIngredientDto;
+import com.chefmate.dto.UnitDto;
 import com.chefmate.model.BaseProduct;
 import com.chefmate.model.Dish;
 import com.chefmate.model.DishIngredient;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -31,7 +33,7 @@ public class DishService {
 
     @Transactional(readOnly = true)
     public List<DishDto> getActiveDishes() {
-        return dishRepo.findByActiveTrue().stream().map(this::toDto).collect(Collectors.toList());
+        return dishRepo.findByActiveTrue().stream().map(this::toDto).toList();
     }
 
     @Transactional(readOnly = true)
@@ -42,7 +44,7 @@ public class DishService {
     @Transactional
     public DishDto createDish(DishDto dto) {
         Dish dish = fromDto(dto);
-        dish.active = true;
+        dish.setActive(true);
         dishRepo.save(dish);
         return toDto(dish);
     }
@@ -50,23 +52,23 @@ public class DishService {
     @Transactional
     public DishDto updateDish(Long id, DishDto dto) {
         Dish d = dishRepo.findById(id).orElseThrow();
-        d.category = dto.category;
-        d.title = dto.title;
-        d.description = dto.description;
+        d.setCategory(dto.category());
+        d.setTitle(dto.title());
+        d.setDescription(dto.description());
         List<DishIngredient> targetIngredients = new ArrayList<>();
-        if (dto.ingredients != null) {
-            for (DishIngredientDto ingrDto : dto.ingredients) {
+        if (dto.ingredients() != null) {
+            for (DishIngredientDto ingrDto : dto.ingredients()) {
                 DishIngredient ingr = fromIngredientDto(ingrDto);
-                ingr.dish = d;
+                ingr.setDish(d);
                 targetIngredients.add(ingr);
             }
         }
-        if (d.ingredients == null) {
-            d.ingredients = new ArrayList<>();
+        if (d.getIngredients() == null) {
+            d.setIngredients(new ArrayList<>());
         } else {
-            d.ingredients.clear();
+            d.getIngredients().clear();
         }
-        d.ingredients.addAll(targetIngredients);
+        d.getIngredients().addAll(targetIngredients);
         dishRepo.save(d);
         return toDto(d);
     }
@@ -74,71 +76,65 @@ public class DishService {
     @Transactional
     public void softDelete(Long id) {
         Dish entity = dishRepo.findById(id).orElseThrow();
-        entity.active = false;
+        entity.setActive(false);
         dishRepo.save(entity);
     }
 
     private DishDto toDto(Dish d) {
-        DishDto r = new DishDto();
-        r.id = d.id;
-        r.category = d.category;
-        r.title = d.title;
-        r.description = d.description;
-        r.active = d.active;
-        if (d.ingredients != null)
-            r.ingredients = d.ingredients.stream().map(this::toIngredientDto).collect(Collectors.toList());
-        return r;
+        List<DishIngredientDto> ingredients = d.getIngredients() != null
+                ? d.getIngredients().stream().map(this::toIngredientDto).collect(Collectors.toList())
+                : List.of();
+        return new DishDto(d.getId(), d.getCategory(), d.getTitle(), d.getDescription(), d.getActive(), ingredients);
     }
-    private DishIngredientDto toIngredientDto(DishIngredient e) {
-        DishIngredientDto r = new DishIngredientDto();
-        r.id = e.id;
-        r.name = e.name;
-        r.qty = e.qty;
-        if (e.unit != null) {
-            r.unitId = e.unit.id;
-            r.unit = unitService.toDto(e.unit);
-        }
-        r.excludeForClient = e.excludeForClient;
-        r.baseProductId = e.baseProduct != null ? e.baseProduct.id : null;
-        return r;
+    private DishIngredientDto toIngredientDto(DishIngredient ingredient) {
+        UnitDto unitDto = ingredient.getUnit() != null ? unitService.toDto(ingredient.getUnit()) : null;
+        UUID unitId = ingredient.getUnit() != null ? ingredient.getUnit().getId() : null;
+        UUID baseProductId = ingredient.getBaseProduct() != null ? ingredient.getBaseProduct().getId() : null;
+        return new DishIngredientDto(
+                ingredient.getId(),
+                ingredient.getName(),
+                ingredient.getQty(),
+                unitId,
+                unitDto,
+                ingredient.getExcludeForClient(),
+                baseProductId);
     }
     private Dish fromDto(DishDto d) {
         Dish entity = new Dish();
-        entity.category = d.category;
-        entity.title = d.title;
-        entity.description = d.description;
-        entity.active = d.active != null ? d.active : true;
-        List<DishIngredient> ingredients = new ArrayList<>();
-        if (d.ingredients != null) {
-            ingredients = d.ingredients.stream().map(this::fromIngredientDto).collect(Collectors.toList());
-        }
+        entity.setCategory(d.category());
+        entity.setTitle(d.title());
+        entity.setDescription(d.description());
+        entity.setActive(d.active() != null ? d.active() : true);
+        List<DishIngredient> ingredients = d.ingredients() != null
+                ? d.ingredients().stream().map(this::fromIngredientDto).collect(Collectors.toList())
+                : new ArrayList<>();
         for (DishIngredient ingredient : ingredients) {
-            ingredient.dish = entity;
+            ingredient.setDish(entity);
         }
-        entity.ingredients = ingredients;
+        entity.setIngredients(ingredients);
         return entity;
     }
     private DishIngredient fromIngredientDto(DishIngredientDto d) {
         DishIngredient e = new DishIngredient();
-        e.name = d.name;
-        e.qty = d.qty;
-        e.excludeForClient = d.excludeForClient != null ? d.excludeForClient : false;
+        e.setName(d.name());
+        e.setQty(d.qty());
+        e.setExcludeForClient(d.excludeForClient() != null ? d.excludeForClient() : false);
         Unit unit = resolveUnit(d);
-        e.unit = unit;
+        e.setUnit(unit);
         BaseProduct baseProduct = resolveBaseProduct(d, unit);
-        e.baseProduct = baseProduct;
+        e.setBaseProduct(baseProduct);
         return e;
     }
 
     private BaseProduct resolveBaseProduct(DishIngredientDto dto, Unit unit) {
         BaseProduct baseProduct = null;
-        if (dto.baseProductId != null) {
-            baseProduct = baseProductRepo.findById(dto.baseProductId).orElse(null);
+        if (dto.baseProductId() != null) {
+            baseProduct = baseProductRepo.findById(dto.baseProductId()).orElse(null);
         }
         if (baseProduct != null) {
             return baseProduct;
         }
-        String name = dto.name != null ? dto.name.trim() : null;
+        String name = dto.name() != null ? dto.name().trim() : null;
         if (name == null || name.isEmpty()) {
             throw new IllegalArgumentException("Ингредиент должен иметь название.");
         }
@@ -147,17 +143,18 @@ public class DishService {
             return baseProduct;
         }
         BaseProduct created = new BaseProduct();
-        created.name = name;
-        created.unit = unit != null ? unit.shortName : unitService.getDefaultUnit().shortName;
-        created.isFreezable = Boolean.TRUE;
+        created.setName(name);
+        String unitShort = unit != null ? unit.getShortName() : unitService.getDefaultUnit().getShortName();
+        created.setUnit(unitShort);
+        created.setIsFreezable(Boolean.TRUE);
         return baseProductRepo.save(created);
     }
 
     private Unit resolveUnit(DishIngredientDto dto) {
-        if (dto.unitId == null) {
+        if (dto.unitId() == null) {
             throw new IllegalArgumentException("Для ингредиента необходимо указать единицу измерения.");
         }
-        return unitService.getRequiredUnit(dto.unitId);
+        return unitService.getRequiredUnit(dto.unitId());
     }
 
 }

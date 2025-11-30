@@ -1,7 +1,8 @@
 package com.chefmate;
 
-import com.chefmate.service.DishService;
 import com.chefmate.service.MenuImportService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -21,8 +22,8 @@ public abstract class AbstractApplicationTest {
     @Container
     private static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:16-alpine");
 
-    @MockitoBean
-    protected DishService dishService;
+    @Autowired
+    ObjectMapper objectMapper;
 
     @MockitoBean
     protected MenuImportService menuImportService;

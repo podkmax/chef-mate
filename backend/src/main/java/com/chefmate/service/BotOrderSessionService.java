@@ -47,9 +47,9 @@ public class BotOrderSessionService {
     public void handleStart(Long telegramId, Long chatId, SendReply sendReply) {
         User user = userRepo.findByTelegramId(telegramId).orElseGet(() -> {
             User u = new User();
-            u.telegramId = telegramId;
-            u.name = "tg" + telegramId;
-            u.role = "CLIENT";
+            u.setTelegramId(telegramId);
+            u.setName("tg" + telegramId);
+            u.setRole("CLIENT");
             userRepo.save(u);
             return u;
         });
@@ -107,8 +107,8 @@ public class BotOrderSessionService {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         for (DishDto d : menu) {
             rows.add(List.of(InlineKeyboardButton.builder()
-                    .text(d.title)
-                    .callbackData("dish:" + d.id)
+                    .text(d.title())
+                    .callbackData("dish:" + d.id())
                     .build()));
         }
         sendReply.send(SendMessage.builder()
@@ -130,7 +130,7 @@ public class BotOrderSessionService {
             Long dishId = Long.valueOf(data.substring(5));
             ss.selectedDish = dishId;
             DishDto dish = dishService.getDish(dishId);
-            ss.selectedDishTitle = dish != null ? dish.title : null;
+            ss.selectedDishTitle = dish != null ? dish.title() : null;
             askPortions(chatId, dishId, sendReply);
         } else if (data.startsWith("portion:")) {
             int portions = Integer.parseInt(data.substring(8));
@@ -218,7 +218,7 @@ public class BotOrderSessionService {
         ss.stage = Stage.CONFIRM;
         DishDto dish = dishService.getDish(ss.selectedDish);
         if (ss.selectedDishTitle == null && dish != null) {
-            ss.selectedDishTitle = dish.title;
+            ss.selectedDishTitle = dish.title();
         }
         String dishName = ss.selectedDishTitle != null ? ss.selectedDishTitle : ("Блюдо #" + ss.selectedDish);
         int portions = ss.selectedPortions != null ? ss.selectedPortions : 0;
@@ -248,19 +248,26 @@ public class BotOrderSessionService {
             User user = userRepo.findByTelegramId(telegramId)
                     .orElseGet(() -> {
                         User u = new User();
-                        u.telegramId = telegramId;
-                        u.name = "tgclient" + telegramId;
-                        u.role = "CLIENT";
+                        u.setTelegramId(telegramId);
+                        u.setName("tgclient" + telegramId);
+                        u.setRole("CLIENT");
                         userRepo.save(u);
                         return u;
                     });
-            OrderDto order = new OrderDto();
-            order.userId = user.id;
-            order.targetDate = ss.selectedDate != null ? ss.selectedDate : LocalDate.now();
-            OrderItemDto item = new OrderItemDto();
-            item.dishId = ss.selectedDish;
-            item.portions = ss.selectedPortions;
-            order.items = List.of(item);
+
+            OrderItemDto item = new OrderItemDto(
+                    ss.selectedDish,
+                    ss.selectedPortions,
+                    null);
+
+            OrderDto order = new OrderDto(
+                    null,
+                    user.getId(),
+                    ss.selectedDate != null ? ss.selectedDate : LocalDate.now(),
+                    null,
+                    null,
+                    List.of(item));
+
             orderService.createOrder(order);
             ss.saved = true;
         }

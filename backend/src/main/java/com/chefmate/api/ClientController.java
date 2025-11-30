@@ -28,10 +28,6 @@ public class ClientController {
     }
 
     private ClientDto toDto(User user) {
-        ClientDto dto = new ClientDto();
-        dto.id = user.id;
-        dto.name = user.name;
-        dto.telegramId = user.telegramId;
-        return dto;
+        return new ClientDto(user.getId(), user.getName(), user.getTelegramId());
     }
 }
